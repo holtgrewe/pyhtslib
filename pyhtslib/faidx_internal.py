@@ -5,6 +5,8 @@ import ctypes
 
 import pyhtslib.load_dll as pl
 
+__author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
+
 htslib = pl.load_htslib()
 
 __all__ = [

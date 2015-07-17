@@ -11,9 +11,6 @@ from pyhtslib.faidx_internal import *  # NOQA
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 
-# TODO(holtgrewe): test this stuff!
-
-
 class FASTAIndexException(Exception):
     """Raised when there is a problem with a FASTAIndex file."""
 
