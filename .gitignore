@@ -1,2 +1,6 @@
 *.py?
 *.sw?
+
+.venv
+.cache
+.coverage
