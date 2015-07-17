@@ -8,6 +8,8 @@ import pyhtslib.load_dll as pl
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 
+# export everything from this submodule manually, including the code that
+# starts with an underscore, importing modules will not import the latter
 __all__ = [
     # exported types
     '_hts_idx_t', '_BGZF',

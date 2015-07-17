@@ -9,6 +9,8 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 htslib = pl.load_htslib()
 
+# export everything from this submodule manually, including the code that
+# starts with an underscore, importing modules will not import the latter
 __all__ = [
     'FAIDXStruct',
     '_fai_build',
