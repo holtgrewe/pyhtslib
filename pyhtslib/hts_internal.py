@@ -11,11 +11,11 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 # export everything from this submodule manually, including the code that
 # starts with an underscore, importing modules will not import the latter
 __all__ = [
-    # exported types
+    # htslib types
     '_hts_idx_t', '_BGZF',
-    # exported functions
-    '_hts_itr_destroy', '_hts_itr_queryi', '_hts_itr_querys',
-    '_hts_itr_next',
+    # htslib functions
+    '_hts_itr_destroy', '_hts_itr_next', '_hts_itr_queryi',
+    '_hts_itr_querys',
 ]
 
 
@@ -33,11 +33,11 @@ htslib = pl.load_htslib()
 _hts_itr_destroy = htslib.itr_destroy
 _hts_itr_destroy.restype = None
 
+_hts_itr_next = htslib.hts_itr_next
+_hts_itr_next.restype = None
+
 _hts_itr_queryi = htslib.itr_queryi
 _hts_itr_queryi.restype = None
 
 _hts_itr_querys = htslib.itr_querys
 _hts_itr_querys.restype = None
-
-_hts_itr_next = htslib.hts_itr_next
-_hts_itr_next.restype = None

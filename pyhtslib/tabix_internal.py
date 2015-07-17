@@ -11,7 +11,11 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 # export everything from this submodule manually, including the code that
 # starts with an underscore, importing modules will not import the latter
 __all__ = [
+    # htslib types
     '_tbx_conf_t', '_tbx_t',
+    # htslib functions
+    '_hts_get_bgzfp', '_tbx_destroy', '_tbx_index_build', '_tbx_index_load',
+    '_tbx_index_load2', '_tbx_name2id', '_tbx_readrec', '_tbx_seqname',
 ]
 
 # ----------------------------------------------------------------------------
@@ -43,14 +47,11 @@ class _tbx_t(ctypes.struct):
 
 htslib = pl.load_htslib()
 
-_tbx_name2id = htslib.tbx_name2id
-_tbx_name2id.restype = ctypes.c_int
-
 _hts_get_bgzfp = htslib.hts_get_bgzfp
 _hts_get_bgzfp.restype = ctypes.POINTER(ph._BGZF)
 
-_tbx_readrec = htslib.hts_readrec
-_tbx_readrec.restype = ctypes.c_int
+_tbx_destroy = htslib.tbx_destroy
+_tbx_destroy.restype = None
 
 _tbx_index_build = htslib.tbx_index_build
 _tbx_index_build.restype = ctypes.c_int
@@ -61,11 +62,14 @@ _tbx_index_load.restype = ctypes.POINTER(_tbx_t)
 _tbx_index_load2 = htslib.tbx_index_load
 _tbx_index_load2.restype = ctypes.POINTER(_tbx_t)
 
+_tbx_name2id = htslib.tbx_name2id
+_tbx_name2id.restype = ctypes.c_int
+
+_tbx_readrec = htslib.hts_readrec
+_tbx_readrec.restype = ctypes.c_int
+
 _tbx_seqname = htslib.tbx_seqname
 _tbx_seqname.restype = ctypes.c_char_p
-
-_tbx_destroy = htslib.tbx_destroy
-_tbx_destroy.restype = None
 
 
 def _tbx_itr_destroy(itr):
