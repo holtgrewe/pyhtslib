@@ -2,8 +2,10 @@
 """C wrapper code."""
 
 import ctypes
-import ctypes.util
 
+import pyhtslib.load_dll as pl
+
+htslib = pl.load_htslib()
 
 __all__ = [
     'FAIDXStruct',
@@ -19,9 +21,6 @@ __all__ = [
 
 class FAIDXStruct(ctypes.Structure):
     """Opaque structure from htslib."""
-
-
-htslib = ctypes.CDLL('libhts.so')
 
 _fai_build = htslib.fai_build
 _fai_build.restype = ctypes.c_int

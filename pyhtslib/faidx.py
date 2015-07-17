@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Random access to FASTA files."""
 
-__author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
-
 import collections
 import ctypes
 import logging
 import os.path
-import sys
 
-from faidx_internal import *
+from pyhtslib.faidx_internal import *  # NOQA
+
+__author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 
 # TODO(holtgrewe): test this stuff!
@@ -28,7 +27,8 @@ class GenomeInterval:
         self.end_pos = end_pos
 
     def __str__(self):
-        return '{}:{:}-{:}'.format(self.seq, self.begin_pos + 1, self.end_pos)
+        return '{}:{:,}-{:,}'.format(self.seq, self.begin_pos + 1,
+                                     self.end_pos)
 
 
 class FASTAIndexSequenceRecord:
@@ -59,31 +59,37 @@ class FASTAIndex:
         self.auto_load = auto_load
         #: whether or not to automatically build index if it does not
         #: exist yet, overrides ``require_index``
-        self.auto_build = True
+        self.auto_build = auto_build
         #: the pointer to the ``FAIDXStruct``
         self.struct_ptr = None
         #: the sequence dictionary
         self.seq_dict = None
 
-        if self.auto_build:
-            self._check_auto_build()
-        if self.auto_load:
-            self._check_auto_load()
-        if self.require_index:
-            self._check_require_index()
+        self._check_auto_build()
+        self._check_auto_load()
+        self._check_require_index()
 
     def _check_auto_build(self):
+        if not self.auto_build:
+            return
         if not os.path.exists(self.fai_path):
             FASTAIndex.build(self.fasta_path)
 
     def _check_auto_load(self):
+        if not self.auto_load:
+            return
         if os.path.exists(self.fai_path):
             self.load()
+        else:
+            tpl = 'FASTA index required for {} for loading but not found.'
+            raise FASTAIndexException(tpl.format(self.fasta_path))
 
     def _check_require_index(self):
+        if not self.require_index:
+            return
         if not os.path.exists(self.fai_path):
             tpl = 'FASTA index required for {} but not found.'
-            raise FastaIndexException(tpl.format(self.fasta_path))
+            raise FASTAIndexException(tpl.format(self.fasta_path))
 
     def load(self):
         """Load FAI index."""
@@ -136,12 +142,3 @@ class FASTAIndex:
         """Build index for the file at the given path."""
         logging.debug('Building FAI file for %s', fasta_path)
         _fai_build(fasta_path.encode('utf-8'))
-
-if __name__ == '__main__':
-    logging.debug('starting...')
-    logging.basicConfig(level=logging.DEBUG)
-    with FASTAIndex('test.fa') as faidx:
-        print(faidx.seq_dict, file=sys.stderr)
-        print('in with statement', file=sys.stderr)
-        print(faidx.fetch('HSBGPG:2-30'), file=sys.stderr)
-    logging.debug('done!')
