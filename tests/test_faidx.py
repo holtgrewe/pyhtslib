@@ -4,7 +4,6 @@
 import os
 import py
 import pytest
-import sys
 
 import pyhtslib.faidx as faidx
 
@@ -18,7 +17,8 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 @pytest.yield_fixture
 def two_genes_fasta(tmpdir):
     """Copy the two_genes.fa file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join('files', 'two_genes.fa')
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_genes.fa')
     dst = tmpdir.join('two_genes.fa')
     src.copy(dst)
     yield dst
