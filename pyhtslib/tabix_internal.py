@@ -18,8 +18,13 @@ __all__ = [
     '_hts_get_bgzfp',
     '_tbx_destroy',
     '_tbx_index_build',
+    '_tbx_index_build2',
     '_tbx_index_load',
     '_tbx_index_load2',
+    '_tbx_itr_destroy',
+    '_tbx_itr_next',
+    '_tbx_itr_queryi',
+    '_tbx_itr_querys',
     '_tbx_name2id',
     '_tbx_readrec',
     '_tbx_seqnames',
@@ -63,6 +68,9 @@ _tbx_destroy.restype = None
 _tbx_index_build = htslib.tbx_index_build
 _tbx_index_build.restype = ctypes.c_int
 
+_tbx_index_build2 = htslib.tbx_index_build2
+_tbx_index_build2.restype = ctypes.c_int
+
 _tbx_index_load = htslib.tbx_index_load
 _tbx_index_load.restype = ctypes.POINTER(_tbx_t)
 
@@ -83,6 +91,10 @@ def _tbx_itr_destroy(itr):
     return ph._hts_itr_destroy(itr)
 
 
+def _tbx_itr_next(htsfp, tbx, itr, r):
+    return ph._hts_itr_next(_hts_get_bgzfp(htsfp), itr, r, tbx)
+
+
 def _tbx_itr_queryi(tbx, tid, beg, end):
     return ph._hts_itr_queryi(tbx, tid, beg, end)
 
@@ -90,10 +102,6 @@ def _tbx_itr_queryi(tbx, tid, beg, end):
 def _tbx_itr_querys(tbx, s):
     return ph._hts_itr_querys(tbx[0].idx, s, _tbx_name2id, tbx,
                               ph._hts_itr_query, _tbx_readrec)
-
-
-def _tbx_itr_next(htsfp, tbx, itr, r):
-    return ph._hts_itr_next(_hts_get_bgzfp(htsfp), itr, r, tbx)
 
 
 def _tbx_bgzf_itr_next(bgzfp, tbx, itr, r):
