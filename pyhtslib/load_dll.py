@@ -9,6 +9,14 @@ import logging
 import os
 
 
+def load_libc():
+    """Load libc so we can free the memory later on."""
+    libc = ctypes.CDLL(ctypes.util.find_library('c'))
+    if not libc:
+        raise Exception('Could not load libc.')
+    return libc
+
+
 def load_htslib():
     """Attempt to load htslib dynamic library.
 

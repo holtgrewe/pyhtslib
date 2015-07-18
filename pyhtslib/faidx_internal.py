@@ -35,8 +35,11 @@ _fai_destroy.restype = None
 _fai_load = htslib.fai_load
 _fai_load.restype = ctypes.POINTER(FAIDXStruct)
 
+# fai_fetch returns a (void *) as *we* need to free the memory and ctypes
+# casts a ctypes.c_char_p into ``bytes`` and we do not get to the original
+# pointer any more, cmp. http://stackoverflow.com/a/13909517/84349
 _fai_fetch = htslib.fai_fetch
-_fai_fetch.restype = ctypes.c_char_p
+_fai_fetch.restype = ctypes.c_void_p
 
 _faidx_nseq = htslib.faidx_nseq
 _faidx_nseq.restype = ctypes.c_int

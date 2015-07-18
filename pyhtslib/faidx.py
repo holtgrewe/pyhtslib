@@ -7,6 +7,7 @@ import logging
 import os.path
 
 import pyhtslib
+from pyhtslib.hts_internal import _libc
 from pyhtslib.faidx_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
@@ -96,12 +97,17 @@ class FASTAIndex:
         return result
 
     def fetch(self, region):
+        """Fetch region and return a ``str`` with the sequence of the region.
+        """
         if type(region) is pyhtslib.GenomeInterval:
             region = str(region)
         region = region.encode('utf-8')
         res_len = ctypes.c_int()
-        res = _fai_fetch(self.struct_ptr, region, ctypes.byref(res_len))
-        return res.decode('utf-8')
+        # note the remark at the definition of _fai_fetch
+        void_p = _fai_fetch(self.struct_ptr, region, ctypes.byref(res_len))
+        res = ctypes.cast(void_p, ctypes.c_char_p).value.decode('utf-8')
+        _libc.free(void_p)
+        return res
 
     def close(self):
         """Free memory for self.struct_ptr if any."""

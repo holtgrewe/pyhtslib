@@ -13,6 +13,7 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 __all__ = [
     # handle to htslib
     'htslib',
+    '_libc',
     # constants (through ``#define``)
     '_HTS_IDX_NOCOOR',
     '_HTS_IDX_START',
@@ -50,6 +51,7 @@ __all__ = [
 
 
 htslib = pl.load_htslib()
+_libc = pl.load_libc()
 
 _bgzf_is_bgzf = htslib.bgzf_is_bgzf
 _bgzf_is_bgzf.restype = ctypes.c_int
