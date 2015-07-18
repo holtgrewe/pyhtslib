@@ -100,9 +100,12 @@ class NormalTabixFileIter:
                          self.struct_ptr, ctypes.byref(self._buffer)) >= 0:
             return self._buffer.s.decode('utf-8')
         else:
+            _hts_itr_destroy(self.struct_ptr)
+            self._buffer.free_p()
             raise StopIteration()
 
 
+# TODO(holtgrew): free iterator even if breaking loop
 class AllTabixFileIter:
     """Allows iteration over the whole tabix file"""
 
@@ -121,6 +124,7 @@ class AllTabixFileIter:
         nseq = ctypes.c_int()
         seq = _tbx_seqnames(self.index.struct_ptr, ctypes.byref(nseq))
         result = [seq[i] for i in range(nseq.value)]
+        _libc.free(seq)
         return result
 
     def __next__(self):
@@ -132,8 +136,8 @@ class AllTabixFileIter:
         else:
             while True:
                 try:
-                    _tbx_itr_destroy(self.struct_ptr)
                     seq = next(self.current_chrom)
+                    _tbx_itr_destroy(self.struct_ptr)
                     self.struct_ptr = _tbx_itr_querys(
                         self.index.struct_ptr, seq)
                     self.struct = self.struct_ptr[0]
@@ -144,6 +148,8 @@ class AllTabixFileIter:
                         return self._buffer.s.decode('utf-8')
                 except StopIteration:
                     self.current_chrom = None
+                    _tbx_itr_destroy(self.struct_ptr)
+                    self._buffer.free_p()
                     self.struct_ptr = None
                     self.struct = None
                     raise StopIteration()
@@ -285,6 +291,7 @@ class TabixIndex:
             else:
                 result.append(buf.s.decode('utf-8'))
                 result.append('\n')
+        buf.free_p()
         return ''.join(result)
 
     def query(self, region_str=None, seq=None, begin=None, end=None):

@@ -83,9 +83,19 @@ _KS_SEP_MAX = 2
 class _kstring_t(ctypes.Structure):
     """Type from klib for string representation"""
 
+    # we use ``ctypes.c_void_p`` for the type of s here as we do not
+    # want to have ctype's behaviour of casting to ``bytes`` and losing
+    # the original pointer
     _fields_ = [('l', ctypes.c_size_t),
                 ('m', ctypes.c_size_t),
-                ('s', ctypes.c_char_p)]
+                ('p', ctypes.c_void_p)]
+
+    @property
+    def s(self):
+        return ctypes.cast(self.p, ctypes.c_char_p).value
+
+    def free_p(self):
+        _libc.free(self.p)
 
 
 class HTSFormatCategory:
