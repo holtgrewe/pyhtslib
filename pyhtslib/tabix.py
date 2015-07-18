@@ -2,8 +2,10 @@
 """Wrapper for accessing tabix-indexed files."""
 
 import os
+import os.path
 
-from tabix_internal import *  # NOQA
+from pyhtslib.hts_internal import *  # NOQA
+from pyhtslib.tabix_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
@@ -12,14 +14,18 @@ class TabixIndexException(Exception):
     """Raised when there is a problem with a TabixIndex file."""
 
 
+class TabixFileException(Exception):
+    """Raised when there is a problem with a TabixFile file."""
+
+
 class TabixConfig:
     """Configuration for tabix-indxed files"""
 
     @staticmethod
-    def from_c_struct(self, name):
+    def from_c_struct(name):
         res = _tbx_conf_t.in_dll(htslib, name)
-        return TabixConfig(res.preset, res.seq_col, res.begin_col,
-                           res.end_col, res.meta_char, res.line_skip)
+        return TabixConfig(res.preset, res.sc, res.bc, res.ec,
+                           res.meta_char, res.line_skip)
 
     def __init__(self, preset, seq_col, begin_col, end_col, meta_char,
                  line_skip):
@@ -41,7 +47,7 @@ class TabixConfig:
 
 TBX_CONF_GFF = TabixConfig.from_c_struct('tbx_conf_gff')
 TBX_CONF_BED = TabixConfig.from_c_struct('tbx_conf_bed')
-TBX_CONF_PLSTBL = TabixConfig.from_c_struct('tbx_conf_plstbl')
+TBX_CONF_PSLTBL = TabixConfig.from_c_struct('tbx_conf_psltbl')
 TBX_CONF_SAM = TabixConfig.from_c_struct('tbx_conf_sam')
 TBX_CONF_VCF = TabixConfig.from_c_struct('tbx_conf_vcf')
 
@@ -53,14 +59,54 @@ class TabixFileIter:
         self.index = index
         self.struct_ptr = struct_ptr
         self.struct = self.struct_pr[0]
+        self._buffer = _kstring_t()
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if _tbx_itr_next(htsfp, self.index.struct_ptr, r, data):
-            pass
-        raise StopIteration()
+        if _tbx_itr_next(self.index.file.struct_ptr, self.index.struct_ptr,
+                         self.struct_ptr, ctypes.byref(self._buffer)) == 0:
+            return self._buffer.s
+        else:
+            raise StopIteration()
+
+
+class TabixFile:
+    """Tabix file"""
+
+    def __init__(self, path):
+        #: path to the indexed file
+        self.path = path
+        #: wrapped C struct
+        self.struct = None
+        #: pointer to C struct
+        self.struct_ptr = None
+
+    def open(self):
+        # check that the file was opened using bgzip
+        if _bgzf_is_bgzf(self.path):
+            tpl = '{} was not compressed using bgzip'
+            raise TabixFileException(tpl.format(self.path))
+        # TODO(holtgrewe): check file time of tabix file and index
+        self.struct_ptr = _hts_open(self.path, 'r')
+        if not self.struct_ptr:
+            tpl = 'Opening tabix file {} failed'
+            raise TabixFileException(tpl.format(self.path))
+        self.struct = self.struct_ptr[0]
+
+    def close(self):
+        if _hts_close(self.struct_ptr):
+            tpl = 'Problem closing tabix file {}'
+            raise TabixFileException(tpl.format(self.path))
+        self.struct_ptr = None
+        self.struct = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
 
 class TabixIndex:
@@ -94,6 +140,14 @@ class TabixIndex:
         #: exist yet, overrides ``require_index``
         self.auto_build = auto_build
 
+        # check that the index is not older than the file, this is a common
+        # source of errors
+        self._check_file_ages()
+
+        #: the ``TabixFile`` to use for reading
+        self.file = TabixFile(self.path)
+        self.file.open()
+
         #: wrapped C struct
         self.struct = None
         #: pointer to C struct
@@ -102,6 +156,13 @@ class TabixIndex:
         self._check_auto_build()
         self._check_auto_load()
         self._check_require_index()
+
+    def _check_file_ages(self):
+        mtime_file = os.path.getmtime(self.path)
+        mtime_index = os.path.getmtime(self.tbi_path)
+        if mtime_file > mtime_index:
+            tpl = 'The file {} is older than the index file {}'
+            raise TabixIndexException(tpl.format(self.path, self.tbi_path))
 
     def _check_auto_build(self):
         if not self.auto_build:
@@ -134,7 +195,8 @@ class TabixIndex:
             self.struct_ptr, seq, begin, end))
 
     def from_start(self):
-        return TabixFilteIter(self, _tbx_itr_query(self.struct_ptr))
+        return TabixFilteIter(self, _tbx_itr_query(
+            self.struct_ptr, _HTS_IDX_START, 0, 0, _tbx_readrec))
 
     def from_current(self):
         return TabixFilteIter(self, _hts_itr_query(
@@ -160,6 +222,7 @@ class TabixIndex:
             _tbx_destroy(self.struct_ptr)
         self.struct = None
         self.struct_ptr = None
+        self.file.close()
 
     def __enter__(self):
         return self

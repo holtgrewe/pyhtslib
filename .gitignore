@@ -1,6 +1,9 @@
 *.py?
 *.sw?
 
+libhts.so
+htslib/
+
 .venv
 .cache
 .coverage

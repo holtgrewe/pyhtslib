@@ -40,11 +40,6 @@ def two_genes_fai(tmpdir):
 # ---------------------------------------------------------------------------
 
 
-def test_genome_interval():
-    gitv = faidx.GenomeInterval('chr1', 1000, 2000)
-    assert str(gitv) == 'chr1:1,001-2,000'
-
-
 def test_fasta_index_auto_build(two_genes_fasta):
     idx = faidx.FASTAIndex(str(two_genes_fasta))
     assert idx.fasta_path == two_genes_fasta

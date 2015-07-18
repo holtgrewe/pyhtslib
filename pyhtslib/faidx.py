@@ -6,6 +6,7 @@ import ctypes
 import logging
 import os.path
 
+import pyhtslib
 from pyhtslib.faidx_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
@@ -13,19 +14,6 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 class FASTAIndexException(Exception):
     """Raised when there is a problem with a FASTAIndex file."""
-
-
-class GenomeInterval:
-    """Zero-based genome interval."""
-
-    def __init__(self, seq, begin_pos, end_pos):
-        self.seq = seq
-        self.begin_pos = begin_pos
-        self.end_pos = end_pos
-
-    def __str__(self):
-        return '{}:{:,}-{:,}'.format(self.seq, self.begin_pos + 1,
-                                     self.end_pos)
 
 
 class FASTAIndexSequenceRecord:
@@ -108,7 +96,7 @@ class FASTAIndex:
         return result
 
     def fetch(self, region):
-        if type(region) is GenomeInterval:
+        if type(region) is pyhtslib.GenomeInterval:
             region = str(region)
         region = region.encode('utf-8')
         res_len = ctypes.c_int()
