@@ -4,7 +4,6 @@
 import os
 import py
 import pytest
-import sys
 
 import pyhtslib.tabix as tabix
 

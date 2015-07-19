@@ -5,7 +5,6 @@ import ctypes
 import logging
 import os
 import os.path
-import sys
 
 from pyhtslib.hts_internal import *  # NOQA
 from pyhtslib.tabix_internal import *  # NOQA
@@ -171,7 +170,6 @@ class TabixFile:
         if _bgzf_is_bgzf(self.path.encode('utf-8')) != 1:
             tpl = '{} was not compressed using bgzip'
             raise TabixFileException(tpl.format(self.path))
-        # TODO(holtgrewe): check file time of tabix file and index
         self.struct_ptr = _hts_open(self.path.encode('utf-8'), 'r')
         if not self.struct_ptr:
             tpl = 'Opening tabix file {} failed'
@@ -296,7 +294,7 @@ class TabixIndex:
 
     def query(self, region_str=None, seq=None, begin=None, end=None):
         if (region_str is None and
-            (seq is None or begin is None or end is None)):
+                (seq is None or begin is None or end is None)):
             raise TabixIndexException(
                 'You have to either give region_str or seq/begin/end')
         if region_str:
@@ -305,7 +303,7 @@ class TabixIndex:
         else:
             ptr = _tbx_itr_queryi(self.struct_ptr, seq, begin, end)
         if not ptr:
-            tpl = 'Could not jump to {}' 
+            tpl = 'Could not jump to {}'
             raise TabixIndexException(tpl.format(region_str))
         return NormalTabixFileIter(self, ptr)
 

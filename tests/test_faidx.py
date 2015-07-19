@@ -64,6 +64,7 @@ def test_fasta_index_require_index_fails(two_genes_fasta):
         faidx.FASTAIndex(str(two_genes_fasta), require_index=True,
                          auto_build=False, auto_load=False)
 
+
 def test_fasta_index_load(two_genes_fasta, two_genes_fai):
     with faidx.FASTAIndex(str(two_genes_fasta)) as idx:
-        s = idx.fetch('HSBGPG:5-100')
+        idx.fetch('HSBGPG:5-100')

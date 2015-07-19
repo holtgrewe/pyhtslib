@@ -77,8 +77,9 @@ class _hFILE(ctypes.Structure):
 
 _KS_SEP_SPACE = 0  # isspace(): \t, \n, \v, \f, \r
 _KS_SEP_TAB = 1  # isspace() && !' '
-_KS_SEP_LINE = 2 # line separator: "\n" (Unix) or "\r\n" (Windows)
+_KS_SEP_LINE = 2  # line separator: "\n" (Unix) or "\r\n" (Windows)
 _KS_SEP_MAX = 2
+
 
 class _kstring_t(ctypes.Structure):
     """Type from klib for string representation"""
