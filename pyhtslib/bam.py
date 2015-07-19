@@ -148,14 +148,202 @@ class BAMHeader:
         return '\n'.join(map(f, self.header_record))
 
 
+class CIGARElement:
+    """CIGAR element"""
+
+    def __init__(self, count, operation):
+        #: CIGAR count
+        self.count = count
+        #: CIGAR operation
+        self.operation = operation
+
+    def __repr__(self):
+        return 'CIGARElement({}, {})'.format(
+            self.count, repr(self.operation))
+
+    def __str__(self):
+        return '{}{}'.format(self.count, self.operation)
+
+
+class BAMAuxTagParser:
+    """Helper for parsing aux field tags from BAM records"""
+
+    def __init__(self, aux, aux_len):
+        self.aux = aux
+        self.aux_len = aux_len
+        self.keys = self.get_keys()
+        print('keys={}'.format(self.keys))
+
+    def get_keys(self):
+        """Get keys"""
+        def aux_type2size(t):
+            DIR = {'A': 1, 'c': 1, 'C': 1, 's': 2, 'S': 2, 'i': 4, 'I': 4,
+                   'f': 4, 'd': 8, 'Z': 'Z', 'H': 'H', 'B': 'B'}
+            return DIR.get(t, 0)
+
+        def skip_aux(s):
+            # skip the type
+            size = aux_type2size(s[0])
+            s += 1
+            if size in ['Z', 'H']:
+                while s[0]:
+                    s += 1
+                return s + 1
+            elif size == 'B':
+                size = aux_type2size(s[0])
+                s += 1
+                n = ctypes.c_uint32(0)
+                ctypes.memmove(ctypes.byref(n), s, 4)
+                return s + size * n.value
+            elif size == 0:
+                raise BAMFileException('Problem parsing auxiliary fields!')
+            else:
+                return s + size
+
+        result = []
+        s = self.aux
+        while s < aux + aux_len:
+            result.append('{}{}'.format(chr(s[0]), char(s[1])))
+            s = skip_aux(s)
+        return result
+
+    def __call__(self):
+        result = collections.OrderedDict()
+        for key in self.keys:
+            # TODO(holtgrewe): fix/finish this
+            result[key] = None
+        return result
+
+
+class BAMRecordImpl:
+    """Information extracted from C internals of ``BAMRecord``"""
+
+    @staticmethod
+    def from_struct(ptr, header):
+        """Return ``BAMRecordImpl`` from internal C structure"""
+        return BAMRecordImpl(
+            str(_bam_get_qname(ptr)),
+            ptr[0].core.flag,
+            ptr[0].core.tid,
+            header.target_infos[ptr[0].core.tid].name,
+            ptr[0].core.pos,
+            _bam_endpos(ptr),
+            ptr[0].core.qual,
+            BAMRecordImpl._cigar(ptr),
+            ptr[0].core.mtid,
+            header.target_infos[ptr[0].core.mtid].name,
+            ptr[0].core.mpos,
+            ptr[0].core.isize,
+            str(_bam_get_seq(ptr)),
+            str(_bam_get_qual(ptr)),
+            BAMAuxTagParser(_bam_get_aux(ptr), _bam_get_l_aux(ptr))(),
+            )
+
+    @staticmethod
+    def _cigar(ptr):
+        def to_ce(cigar):
+            return CIGARElement(_bam_cigar_oplen(cigar),
+                                _bam_cigar_opchr(cigar))
+
+        cigar_arr = _bam_get_cigar(ptr)
+        return [to_ce(cigar_arr[i]) for i in range(ptr[0].core.l_qseq)]
+
+    def __init__(self, qname, flag, r_id, ref, begin_pos, end_pos, mapq,
+                 cigar, r_id_next, ref_next, pos_next, tlen, seq, qual,
+                 tags):
+        #: read name (QNAME)
+        self.qname = qname
+        #: numeric flag (FLAG)
+        self.flag = flag
+        #: reference id of fragment's alignment (RID)
+        self.r_id = r_id
+        #: reference name of the alignment
+        self.ref = ref
+        #: begin position of the alignment (POS)
+        self.begin_pos = begin_pos
+        #: 0-base end position of alignment (inferred from ``begin_pos``
+        #: and ``cigar``
+        self.end_pos = end_pos
+        #: mapping quality (MAPQ)
+        self.mapq = mapq
+        #: CIGAR string
+        self.cigar = cigar
+        #: reference id of next fragment's alignment
+        self.r_id_next = r_id_next
+        #: reference name of next fragment's alignment
+        self.ref_next = ref_next
+        #: 0-based position of next fragment's alignment
+        self.pos_next = pos_next
+        #: template length (TLEN)
+        self.tlen = tlen
+        #: sequence string (SEQ)
+        self.seq = seq
+        #: quality string (QUAL)
+        self.qual = qual
+        #: tags, as ``OrderedDict``
+        self.tags = tags
+
+    @property
+    def is_paired(self):
+        return (self.flag & _BAM_FPAIRED) != 0
+
+    @property
+    def is_proper_pair(self):
+        return (self.flag & _BAM_FPROPER_PAIR) != 0
+
+    @property
+    def is_unmapped(self):
+        return (self.flag & _BAM_UNMAP) != 0
+
+    @property
+    def is_mate_unmapped(self):
+        return (self.flag & _BAM_MUNMAP) != 0
+
+    @property
+    def is_reversed(self):
+        return (self.flag & _BAM_FREVERSE) != 0
+
+    @property
+    def is_mate_reversed(self):
+        return (self.flag & _BAM_FMREVERSE) != 0
+
+    @property
+    def is_first(self):
+        return (self.flag & _BAM_FREAD1) != 0
+
+    @property
+    def is_last(self):
+        return (self.flag & _BAM_FREAD2) != 0
+
+    @property
+    def is_secondary(self):
+        return (self.flag & _BAM_FSECONDARY) != 0
+
+    @property
+    def is_qc_fail(self):
+        return (self.flag & _BAM_FQC_FAIL) != 0
+
+    @property
+    def is_duplicate(self):
+        return (self.flag & _BAM_FDUPLICATE) != 0
+
+    @property
+    def is_supplementary(self):
+        return (self.flag & _BAM_FSUPPLEMENTARY) != 0
+
+
 class BAMRecord:
     """Record from a BAM file"""
 
-    def __init__(self, struct_ptr):
+    def __init__(self, struct_ptr, header):
         #: pointer to wrapped C struct
         self.struct_ptr = struct_ptr
         #: wrapped C struct
         self.struct = self.struct_ptr[0]
+        #: ``BAMHeader`` for references
+        self.header = header
+        #: ``BAMRecordImpl`` instance used for the representation
+        self.impl = None
 
     def detach(self):
         """Detach from wrapped C struct
@@ -167,9 +355,24 @@ class BAMRecord:
         have to obtain a copy that is independent of the current buffer
         through the use of ``detach()``.
         """
+        if not self.impl:
+            self.impl = BAMRecordImpl.from_struct(self.struct_ptr)
+        self.struct_ptr = None
+        self.struct = None
 
     def _reset(self):
         """Reset Python side, as if freshly constructed"""
+        self.impl = None
+
+    def __getattr__(self, name):
+        """Delegation to self.impl if set, auto-set from struct"""
+        if not self.impl and self.struct:
+            self.impl = BAMRecordImpl.from_struct(self.struct)
+        elif not self.impl and not self.struct:
+            raise AttributeError('self.impl is None and cannot rebuild from '
+                                 'None self.struct')
+        else:
+            return getattr(self.impl, name)
 
 
 class BAMFileIter:
@@ -187,7 +390,7 @@ class BAMFileIter:
         #: buffer for readin in the file itself
         self.struct = self.struct_ptr[0]
         #: ``BAMRecord`` meant for consumption by the user
-        self.record = BAMRecord(self.struct_ptr)
+        self.record = BAMRecord(self.struct_ptr, self.bam_file.header)
 
     def __next__(self):
         r = _sam_read1(self.bam_file.struct_ptr,
