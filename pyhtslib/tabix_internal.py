@@ -4,7 +4,7 @@
 import ctypes
 
 import pyhtslib.load_dll as pl
-import pyhtslib.hts_internal as ph
+from pyhtslib.hts_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
@@ -50,17 +50,17 @@ class _tbx_t(ctypes.Structure):
     """C structure for a tabix index"""
 
     _fields_ = [('conf', _tbx_conf_t),
-                ('idx', ctypes.POINTER(ph._hts_idx_t)),
+                ('idx', ctypes.POINTER(_hts_idx_t)),
                 ('dict', ctypes.c_void_p)]
 
 # ----------------------------------------------------------------------------
-# C functions and return types
+# C functions and their return types
 # ----------------------------------------------------------------------------
 
 htslib = pl.load_htslib()
 
 _hts_get_bgzfp = htslib.hts_get_bgzfp
-_hts_get_bgzfp.restype = ctypes.POINTER(ph._BGZF)
+_hts_get_bgzfp.restype = ctypes.POINTER(_BGZF)
 
 _tbx_destroy = htslib.tbx_destroy
 _tbx_destroy.restype = None
@@ -88,21 +88,21 @@ _tbx_seqnames.restype = ctypes.POINTER(ctypes.c_char_p)
 
 
 def _tbx_itr_destroy(itr):
-    return ph._hts_itr_destroy(itr)
+    return _hts_itr_destroy(itr)
 
 
 def _tbx_itr_next(htsfp, tbx, itr, r):
-    return ph._hts_itr_next(_hts_get_bgzfp(htsfp), itr, r, tbx)
+    return _hts_itr_next(_hts_get_bgzfp(htsfp), itr, r, tbx)
 
 
 def _tbx_itr_queryi(tbx, tid, beg, end):
-    return ph._hts_itr_queryi(tbx, tid, beg, end)
+    return _hts_itr_queryi(tbx, tid, beg, end)
 
 
 def _tbx_itr_querys(tbx, s):
-    return ph._hts_itr_querys(tbx[0].idx, s, _tbx_name2id, tbx,
-                              ph._hts_itr_query, _tbx_readrec)
+    return _hts_itr_querys(tbx[0].idx, s, _tbx_name2id, tbx,
+                           _hts_itr_query, _tbx_readrec)
 
 
 def _tbx_bgzf_itr_next(bgzfp, tbx, itr, r):
-    return ph._hts_itr_next(bgzfp, itr, r, tbx)
+    return _hts_itr_next(bgzfp, itr, r, tbx)
