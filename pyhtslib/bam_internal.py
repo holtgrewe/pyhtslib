@@ -295,7 +295,7 @@ class _bam1_core_t(ctypes.Structure):
 class _bam1_t(ctypes.Structure):
     """C structure for htslib type bam1_t"""
 
-    _fields_ = [('core', bam1_core_t),
+    _fields_ = [('core', _bam1_core_t),
                 ('l_data', ctypes.c_int),
                 ('m_data', ctypes.c_int),
                 ('data', ctypes.POINTER(ctypes.c_uint8)),
@@ -352,7 +352,7 @@ _bam_endpos.restype = ctypes.c_int32
 _bam_str2flag = htslib.bam_str2flag
 _bam_str2flag.restype = ctypes.c_int
 
-_bam_flag2str = htslib.bamflag2str
+_bam_flag2str = htslib.bam_flag2str
 _bam_flag2str = ctypes.c_void_p  # actually a string that must be freed
 
 _sam_index_load = htslib.sam_index_load
@@ -382,35 +382,35 @@ _sam_hdr_read.restype = ctypes.POINTER(_bam_hdr_t)
 _sam_hdr_write = htslib.sam_hdr_write
 _sam_hdr_write.restype = ctypes.c_int
 
-_sam_hdr_parse1 = htslib.sam_hdr_parse1
-_sam_hdr_parse1.restype = ctypes.c_int
+_sam_parse1 = htslib.sam_parse1
+_sam_parse1.restype = ctypes.c_int
 
-_sam_hdr_format1 = htslib.sam_hdr_format1
-_sam_hdr_format1.restype = ctypes.c_int
+_sam_format1 = htslib.sam_format1
+_sam_format1.restype = ctypes.c_int
 
-_sam_hdr_read1 = htslib.sam_hdr_read1
-_sam_hdr_read1.restype = ctypes.c_int
+_sam_read1 = htslib.sam_read1
+_sam_read1.restype = ctypes.c_int
 
-_sam_hdr_write1 = htslib.sam_hdr_write
-_sam_hdr_write1.restype = ctypes.c_int
+_sam_write1 = htslib.sam_write1
+_sam_write1.restype = ctypes.c_int
 
-_sam_hdr_aux_get = htslib.sam_hdr_write
-_sam_hdr_aux_get.restype = ctypes.c_void_ptr  # actually a string, user frees
+_bam_aux_get = htslib.bam_aux_get
+_bam_aux_get.restype = ctypes.c_void_p  # actually a string, user frees
 
-_sam_aux2i = htslib.sam_write
-_sam_aux2i.restype = ctypes.c_int32
+_bam_aux2i = htslib.bam_aux2i
+_bam_aux2i.restype = ctypes.c_int32
 
-_sam_aux2f = htslib.sam_write
-_sam_aux2f.restype = ctypes.c_double
+_bam_aux2f = htslib.bam_aux2f
+_bam_aux2f.restype = ctypes.c_double
 
-_sam_aux2A = htslib.sam_write
-_sam_aux2A.restype = ctypes.c_char
+_bam_aux2A = htslib.bam_aux2A
+_bam_aux2A.restype = ctypes.c_char
 
-_sam_aux2Z = htslib.sam_write
-_sam_aux2Z.restype = ctypes.c_void_p  # actually a string, freed by user
+_bam_aux2Z = htslib.bam_aux2Z
+_bam_aux2Z.restype = ctypes.c_void_p  # actually a string, freed by user
 
 _bam_aux_append = htslib.bam_aux_append
 _bam_aux_append.restype = None
 
-_bam_aux_del = htslib.hts.bam_aux_del
+_bam_aux_del = htslib.bam_aux_del
 _bam_aux_del.restype = ctypes.c_int

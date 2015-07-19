@@ -31,6 +31,13 @@ class BAMHeaderTargetInfo:
         #: length of the target/reference
         self.length = length
 
+    def __eq__(self, other):
+        return (self.name == other.name and self.length == other.length)
+
+    def __repr__(self):
+        return 'BAMHeaderTargetInfo({}, {})'.format(
+                repr(self.name), self.length)
+
 
 class BAMHeaderRecord:
     """Header record"""
@@ -45,15 +52,21 @@ class BAMHeaderRecord:
     def for_sam_header(self):
         """Return SAM header line representation, excluding line ending"""
         def f(item):
-            return '{}={}'.format(*item)
-        return '@{} {}'.format(self.key,
-                               '\t'.join(map(f, self.tags.items())))
+            return '{}:{}'.format(*item)
+        return '@{}\t{}'.format(self.key,
+                                '\t'.join(map(f, self.tags.items())))
 
     def from_sam_header(line):
-        arr = line.split('\t')
+        arr = line.strip().split('\t')
         key = arr[0][1:]
         items = [entry.split(':', 1) for entry in arr[1:]]
         return BAMHeaderRecord(key, items)
+
+    def __eq__(self, other):
+        return self.key == other.key and self.tags == other.tags
+
+    def __repr__(self):
+        return 'BAMHeaderRecord({}, {})'.format(repr(self.key), self.tags)
 
 
 class BAMHeaderComment:
@@ -69,7 +82,13 @@ class BAMHeaderComment:
 
     @staticmethod
     def from_sam_header(line):
-        return BAMHeaderComment(line.split('\t', 1)[1])
+        return BAMHeaderComment(line.strip().split('\t', 1)[1])
+
+    def __eq__(self, other):
+        return self.text == other.text
+
+    def __repr__(self):
+        return 'BAMHeaderComment.format({})'.format(self.text)
 
 
 class BAMHeader:
@@ -98,11 +117,12 @@ class BAMHeader:
                 BAMHeaderTargetInfo(s.target_name[i].decode('utf-8'),
                                     s.target_len[i]))
         # parse headers from the text
+        recs = self.header_records
         for line in s.text.decode('utf-8').splitlines(True):
             if line.startswith('@CO'):
-                return BAMHeaderComment.from_sam_header(line)
+                recs.append(BAMHeaderComment.from_sam_header(line))
             else:
-                return BAMHeaderRecord.from_sam_header(line)
+                recs.append(BAMHeaderRecord.from_sam_header(line))
 
     def to_sam_header(self):
         """Return SAM header representation"""
