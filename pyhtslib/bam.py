@@ -167,12 +167,14 @@ class CIGARElement:
 
 class BAMAuxTagParser:
     """Helper for parsing aux field tags from BAM records"""
+    # TODO(holtgrewe): This probably works better using ctypes.string_at and
+    # then performing all parsing in native Python.
 
-    def __init__(self, aux, aux_len):
+    def __init__(self, struct_ptr, aux, aux_len):
+        self.struct_ptr = struct_ptr
         self.aux = aux
         self.aux_len = aux_len
         self.keys = self.get_keys()
-        print('keys={}'.format(self.keys))
 
     def get_keys(self):
         """Get keys"""
@@ -183,14 +185,17 @@ class BAMAuxTagParser:
 
         def skip_aux(s):
             # skip the type
-            size = aux_type2size(s[0])
+            def deref(s):
+                return ctypes.c_char.from_address(s).value
+            size = aux_type2size(deref(s).decode('utf-8'))
+            # print('c={}, size={}'.format(deref(s), size), file=sys.stderr)
             s += 1
             if size in ['Z', 'H']:
-                while s[0]:
+                while deref(s) != b'\x00':
                     s += 1
                 return s + 1
             elif size == 'B':
-                size = aux_type2size(s[0])
+                size = aux_type2size(deref(s).decode('utf-8'))
                 s += 1
                 n = ctypes.c_uint32(0)
                 ctypes.memmove(ctypes.byref(n), s, 4)
@@ -201,17 +206,36 @@ class BAMAuxTagParser:
                 return s + size
 
         result = []
-        s = self.aux
-        while s < aux + aux_len:
-            result.append('{}{}'.format(chr(s[0]), char(s[1])))
-            s = skip_aux(s)
+        s = ctypes.addressof(self.aux.contents)
+        while s < ctypes.addressof(self.aux.contents) + self.aux_len:
+            c1 = ctypes.c_char.from_address(s).value.decode('utf-8')
+            c2 = ctypes.c_char.from_address(s + 1).value.decode('utf-8')
+            result.append('{}{}'.format(c1, c2))
+            # print('result={}'.format(result), file=sys.stderr)
+            s = skip_aux(s + 2)
         return result
 
     def __call__(self):
         result = collections.OrderedDict()
         for key in self.keys:
-            # TODO(holtgrewe): fix/finish this
-            result[key] = None
+            # print('key={}'.format(key), file=sys.stderr)
+            ptr = _bam_aux_get(self.struct_ptr, key.encode('utf-8'))
+            # print('ptr={}'.format(ptr), file=sys.stderr)
+            t = chr(ptr[0])
+            # print('t={}'.format(t), file=sys.stderr)
+            if t in ['c', 'C', 's', 'S', 'i', 'I']:
+                result[key] = _bam_aux2i(ptr)
+            elif t in ['d', 'f']:
+                result[key] = _bam_aux2f(ptr)
+            elif t in ['A']:
+                result[key] = _bam_aux2A(ptr)
+            elif t in ['Z', 'H']:
+                result[key] = ctypes.string_at(
+                    ctypes.addressof(_bam_aux2Z(ptr).contents)).decode('utf-')
+            else:
+                # TODO(holtgrewe): finish for arrays
+                print('WARNING: unknown type {}'.format(t), file=sys.stderr)
+                result[key] = None
         return result
 
 
@@ -221,23 +245,44 @@ class BAMRecordImpl:
     @staticmethod
     def from_struct(ptr, header):
         """Return ``BAMRecordImpl`` from internal C structure"""
-        return BAMRecordImpl(
-            str(_bam_get_qname(ptr)),
-            ptr[0].core.flag,
-            ptr[0].core.tid,
-            header.target_infos[ptr[0].core.tid].name,
-            ptr[0].core.pos,
-            _bam_endpos(ptr),
-            ptr[0].core.qual,
-            BAMRecordImpl._cigar(ptr),
-            ptr[0].core.mtid,
-            header.target_infos[ptr[0].core.mtid].name,
-            ptr[0].core.mpos,
-            ptr[0].core.isize,
-            str(_bam_get_seq(ptr)),
-            str(_bam_get_qual(ptr)),
-            BAMAuxTagParser(_bam_get_aux(ptr), _bam_get_l_aux(ptr))(),
-            )
+        qname = _bam_get_qname(ptr).value.decode('utf-8')
+        # print('QNAME={} ({})'.format(qname, type(qname)))
+        flag = ptr[0].core.flag
+        # print('FLAG={} ({})'.format(flag, type(flag)))
+        tid = ptr[0].core.tid
+        # print('TID={} ({})'.format(tid, type(tid)))
+        ref = header.target_infos[ptr[0].core.tid].name
+        # print('REF={} ({})'.format(ref, type(ref)))
+        pos = ptr[0].core.pos
+        # print('POS={} ({})'.format(pos, type(pos)))
+        end_pos = _bam_endpos(ptr)
+        # print('END_POS={} ({})'.format(end_pos, type(end_pos)))
+        mapq = ptr[0].core.qual
+        # print('QUAL={} ({})'.format(qual, type(qual)))
+        cigar = BAMRecordImpl._cigar(ptr)
+        # print('CIGAR={} ({})'.format(cigar, type(cigar)))
+        mtid = ptr[0].core.mtid
+        # print('MATE TID={} ({})'.format(mtid, type(mtid)))
+        mref = header.target_infos[ptr[0].core.mtid].name
+        # print('MATE REF={} ({})'.format(mref, type(mref)))
+        mpos = ptr[0].core.mpos
+        # print('MPOS={} ({})'.format(mpos, type(mpos)))
+        isize = ptr[0].core.isize
+        # print('ISIZE={} ({})'.format(isize, type(isize)))
+        _l_qseq = ptr[0].core.l_qseq
+        _seq_ptr = ctypes.cast(_bam_get_seq(ptr),
+                              ctypes.POINTER(ctypes.c_uint8))
+        seq = ''.join([_BAM_SEQ_STR[_bam_seqi(_seq_ptr, i)]
+                       for i in range(_l_qseq)])
+        # print('SEQ={} ({})'.format(seq, type(seq)))
+        _qual_ptr = _bam_get_qual(ptr)
+        qual = ''.join([chr(ord('!') + _qual_ptr[i]) for i in range(_l_qseq)])
+        # print('QUAL={} ({})'.format(qual, type(qual)), file=sys.stderr)
+        # TODO(holtgrewe): make parsing of tags lazy
+        tags = BAMAuxTagParser(ptr, _bam_get_aux(ptr), _bam_get_l_aux(ptr))()
+        # print('TAGS={} ({})'.format(tags, type(tags)))
+        return BAMRecordImpl(qname, flag, tid, ref, pos, end_pos, mapq, cigar,
+                             mtid, mref, mpos, isize, seq, qual, tags)
 
     @staticmethod
     def _cigar(ptr):
@@ -246,7 +291,7 @@ class BAMRecordImpl:
                                 _bam_cigar_opchr(cigar))
 
         cigar_arr = _bam_get_cigar(ptr)
-        return [to_ce(cigar_arr[i]) for i in range(ptr[0].core.l_qseq)]
+        return [to_ce(cigar_arr[i]) for i in range(ptr[0].core.n_cigar)]
 
     def __init__(self, qname, flag, r_id, ref, begin_pos, end_pos, mapq,
                  cigar, r_id_next, ref_next, pos_next, tlen, seq, qual,
@@ -335,18 +380,20 @@ class BAMRecordImpl:
 class BAMRecord:
     """Record from a BAM file"""
 
-    def __init__(self, struct_ptr, header):
+    def __init__(self, struct_ptr=None, header=None, impl=None):
         #: pointer to wrapped C struct
         self.struct_ptr = struct_ptr
         #: wrapped C struct
-        self.struct = self.struct_ptr[0]
+        self.struct = None
+        if self.struct_ptr:
+            self.struct = self.struct_ptr[0]
         #: ``BAMHeader`` for references
         self.header = header
         #: ``BAMRecordImpl`` instance used for the representation
-        self.impl = None
+        self.impl = impl
 
     def detach(self):
-        """Detach from wrapped C struct
+        """Return copy that is detached from the underlying C object
 
         The only way of obtaining ``BAMRecords`` is through iterating
         ``BAMFile`` objects, either through an index or not.  For efficiency,
@@ -355,10 +402,11 @@ class BAMRecord:
         have to obtain a copy that is independent of the current buffer
         through the use of ``detach()``.
         """
-        if not self.impl:
-            self.impl = BAMRecordImpl.from_struct(self.struct_ptr)
-        self.struct_ptr = None
-        self.struct = None
+        impl = self.impl
+        if not impl:
+            impl = BAMRecordImpl.from_struct(self.struct_ptr, self.header)
+        self.impl = None
+        return BAMRecord(impl=impl)
 
     def _reset(self):
         """Reset Python side, as if freshly constructed"""
@@ -366,13 +414,12 @@ class BAMRecord:
 
     def __getattr__(self, name):
         """Delegation to self.impl if set, auto-set from struct"""
-        if not self.impl and self.struct:
-            self.impl = BAMRecordImpl.from_struct(self.struct)
-        elif not self.impl and not self.struct:
+        if not self.impl and not self.struct:
             raise AttributeError('self.impl is None and cannot rebuild from '
                                  'None self.struct')
-        else:
-            return getattr(self.impl, name)
+        elif not self.impl and self.struct:
+            self.impl = BAMRecordImpl.from_struct(self.struct_ptr, self.header)
+        return getattr(self.impl, name)
 
 
 class BAMFileIter:
@@ -385,9 +432,9 @@ class BAMFileIter:
     def __init__(self, bam_file):
         #: the ``BAMFile`` to iterate through
         self.bam_file = bam_file
-        #: pointer to buffer for reading in the file record by record
-        self.struct_ptr = _bam_init1()
         #: buffer for readin in the file itself
+        self.struct_ptr = _bam_init1()
+        #: pointer to buffer for reading in the file record by record
         self.struct = self.struct_ptr[0]
         #: ``BAMRecord`` meant for consumption by the user
         self.record = BAMRecord(self.struct_ptr, self.bam_file.header)
@@ -395,7 +442,7 @@ class BAMFileIter:
     def __next__(self):
         r = _sam_read1(self.bam_file.struct_ptr,
                        self.bam_file.header.struct_ptr,
-                       self.struct_ptr)
+                       ctypes.byref(self.struct))
         if r >= 0:
             # successfully read record from file
             self.record._reset()
@@ -411,11 +458,7 @@ class BAMFileIter:
                 raise StopIteration
 
     def close(self):
-        if not self.struct_ptr:
-            return
         _bam_destroy1(self.struct_ptr)
-        self.struct_ptr = None
-        self.struct = None
 
 
 class BAMFile:

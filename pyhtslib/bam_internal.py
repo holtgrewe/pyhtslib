@@ -29,6 +29,8 @@ __all__ = [
     '_BAM_CIGAR_MASK',
     '_BAM_CIGAR_TYPE',
 
+    '_BAM_SEQ_STR',
+
     '_BAM_FPAIRED',
     '_BAM_FPROPER_PAIR',
     '_BAM_FUNMAP',
@@ -131,10 +133,12 @@ _BAM_CEQUAL = 7
 _BAM_CDIFF = 8
 _BAM_CBACK = 9
 
-_BAM_CIGAR_STR = "MIDNSHP=XB"
+_BAM_CIGAR_STR = 'MIDNSHP=XB'
 _BAM_CIGAR_SHIFT = 4
 _BAM_CIGAR_MASK = 0xf
 _BAM_CIGAR_TYPE = 0x3C1A7
+
+_BAM_SEQ_STR = '=ACMGRSVTWYHKDBN'
 
 
 def _bam_cigar_op(c):
@@ -192,33 +196,46 @@ def _bam_is_mrev(b):
 
 
 def _bam_get_qname(b):
-    return ctypes.cast(b[0].data, ctypes.c_char_ptr)
+    return ctypes.cast(b[0].data, ctypes.c_char_p)
 
 
 def _bam_get_cigar(b):
-    return ctypes.cast(b[0].data + b[0].core.l_qname,
-                       ctypes.POINTER(ctypes.c_uint32))
+    ptr = b[0].data
+    address = ctypes.addressof(ptr.contents) + b[0].core.l_qname
+    return ctypes.pointer(ctypes.c_uint32.from_address(
+        address))
 
 
 def _bam_get_seq(b):
-    return b[0].data + (b[0].core.n_cigar << 2) + b[0].core.l_qname
+    ptr = b[0].data
+    offset = b[0].core.l_qname + (b[0].core.n_cigar << 2)
+    address = ctypes.addressof(ptr.contents) + offset
+    return ctypes.pointer(ctypes.c_uint8.from_address(address))
 
 
 def _bam_get_qual(b):
-    return _bam_get_seq + ((b[0].core.l_qseq) >> 1)
+    ptr = b[0].data
+    offset = (b[0].core.l_qname + (b[0].core.n_cigar << 2) +
+              ((b[0].core.l_qseq + 1) >> 1))
+    address = ctypes.addressof(ptr.contents) + offset
+    return ctypes.pointer(ctypes.c_uint8.from_address(address))
 
 
 def _bam_get_aux(b):
-    return _bam_get_qual + b[0].core.l_seq
+    ptr = b[0].data
+    offset = (b[0].core.l_qname + (b[0].core.n_cigar << 2) +
+              ((b[0].core.l_qseq + 1) >> 1) + b[0].core.l_qseq)
+    address = ctypes.addressof(ptr.contents) + offset
+    return ctypes.pointer(ctypes.c_uint8.from_address(address))
 
 
 def _bam_get_l_aux(b):
     return (b[0].l_data - (b[0].core.n_cigar << 2) - b[0].core.l_qname -
-            b[0].core.l_qseq - ((b[0].core.l_qseq + 1) >> 1))
+            ((b[0].core.l_qseq + 1) >> 1) - b[0].core.l_qseq)
 
 
 def _bam_seqi(s, i):
-    return s[i >> 1] >> ((((~i) & 1) << 2) & 0xf)
+    return (s[i >> 1] >> (((~i) & 1) << 2)) & 0xf
 
 
 def _bam_itr_destroy(it):
@@ -286,6 +303,8 @@ class _bam1_core_t(ctypes.Structure):
                 ('bin', ctypes.c_uint32, 16),
                 ('qual', ctypes.c_uint32, 8),
                 ('l_qname', ctypes.c_uint32, 8),
+                ('flag', ctypes.c_uint32, 16),
+                ('n_cigar', ctypes.c_uint32, 16),
                 ('l_qseq', ctypes.c_int32),
                 ('mtid', ctypes.c_int32),
                 ('mpos', ctypes.c_int32),
@@ -395,7 +414,7 @@ _sam_write1 = htslib.sam_write1
 _sam_write1.restype = ctypes.c_int
 
 _bam_aux_get = htslib.bam_aux_get
-_bam_aux_get.restype = ctypes.c_void_p  # actually a string, user frees
+_bam_aux_get.restype = ctypes.POINTER(ctypes.c_uint8)
 
 _bam_aux2i = htslib.bam_aux2i
 _bam_aux2i.restype = ctypes.c_int32
@@ -407,7 +426,7 @@ _bam_aux2A = htslib.bam_aux2A
 _bam_aux2A.restype = ctypes.c_char
 
 _bam_aux2Z = htslib.bam_aux2Z
-_bam_aux2Z.restype = ctypes.c_void_p  # actually a string, freed by user
+_bam_aux2Z.restype = ctypes.POINTER(ctypes.c_uint8)
 
 _bam_aux_append = htslib.bam_aux_append
 _bam_aux_append.restype = None
