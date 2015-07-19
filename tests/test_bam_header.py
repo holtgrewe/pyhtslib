@@ -6,100 +6,19 @@ This file contains tests for the header-related code.
 
 # TODO(holtgrewe): tests for CRAM
 
-import os
-import py
-import pytest
 import sys  # NOQA  TODO(holtgrew): remove again
 
 from collections import OrderedDict  # for brevity
 
 import pyhtslib.bam as bam
-import pyhtslib.bam_internal as bam_internal
-import pyhtslib.hts_internal as hts_internal
+
+from tests.bam_fixtures import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers
 # ---------------------------------------------------------------------------
-
-
-@pytest.yield_fixture
-def header_only_sam(tmpdir):
-    """Copy the header_only.sam file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join(
-        'files', 'header_only.sam')
-    dst = tmpdir.join('header_only.sam')
-    src.copy(dst)
-    yield dst
-    dst.remove()
-
-
-@pytest.yield_fixture
-def header_only_sam_header(header_only_sam):
-    hts_file = hts_internal._hts_open(
-        str(header_only_sam).encode('utf-8'), 'r')
-    hdr = bam_internal._sam_hdr_read(hts_file)
-    yield hdr
-    bam_internal._bam_hdr_destroy(hdr)
-    hts_internal._hts_close(hts_file)
-
-
-@pytest.yield_fixture
-def header_only_sam_gz(tmpdir):
-    """Copy the header_only.sam.gz file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join(
-        'files', 'header_only.sam.gz')
-    dst = tmpdir.join('header_only.sam.gz')
-    src.copy(dst)
-    yield dst
-    dst.remove()
-
-
-@pytest.yield_fixture
-def header_only_sam_gz_header(header_only_sam_gz):
-    hts_file = hts_internal._hts_open(
-        str(header_only_sam_gz).encode('utf-8'), 'r')
-    hdr = bam_internal._sam_hdr_read(hts_file)
-    yield hdr
-    bam_internal._bam_hdr_destroy(hdr)
-    hts_internal._hts_close(hts_file)
-
-
-@pytest.yield_fixture
-def header_only_bam(tmpdir):
-    """Copy the header_only.bam file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join(
-        'files', 'header_only.bam')
-    dst = tmpdir.join('header_only.bam')
-    src.copy(dst)
-    yield dst
-    dst.remove()
-
-
-@pytest.yield_fixture
-def header_only_bai(tmpdir):
-    """Copy the header_only.bam.bai file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join(
-        'files', 'header_only.bam.bai')
-    dst = tmpdir.join('header_only.bam.bai')
-    src.copy(dst)
-    yield dst
-    dst.remove()
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-def test_bam_header_record():
-    rec = bam.BAMHeaderRecord('HD', [('VN', '1.0'), ('SO', 'unsorted')])
-    assert rec.for_sam_header() == '@HD\tVN:1.0\tSO:unsorted'
-
-
-def test_bam_header_comment():
-    co = bam.BAMHeaderComment('foo bar baz!')
-    assert co.for_sam_header() == '@CO\tfoo bar baz!'
 
 
 def check_header_of_header_only_sam(header):
@@ -134,6 +53,20 @@ def check_header_of_header_only_sam(header):
             [('ID', 'UNKNOWN'), ('SM', 'UNKNOWN')])),
         bam.BAMHeaderRecord('PG', OrderedDict(
             [('ID', 'bowtie2'), ('PN', 'bowtie2'), ('VN', '2.0.0-beta5')]))]
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+def test_bam_header_record():
+    rec = bam.BAMHeaderRecord('HD', [('VN', '1.0'), ('SO', 'unsorted')])
+    assert rec.for_sam_header() == '@HD\tVN:1.0\tSO:unsorted'
+
+
+def test_bam_header_comment():
+    co = bam.BAMHeaderComment('foo bar baz!')
+    assert co.for_sam_header() == '@CO\tfoo bar baz!'
 
 
 def test_read_header_from_sam(header_only_sam):

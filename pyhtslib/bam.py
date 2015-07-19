@@ -37,7 +37,7 @@ class BAMHeaderTargetInfo:
 
     def __repr__(self):
         return 'BAMHeaderTargetInfo({}, {})'.format(
-                repr(self.name), self.length)
+            repr(self.name), self.length)
 
 
 class BAMHeaderRecord:
@@ -150,7 +150,7 @@ class BAMHeader:
 
 class BAMFile:
     """Wrapper for SAM/BAM/CRAM access
-   
+
     It's strongly recommended to use as a context manager
     """
 
