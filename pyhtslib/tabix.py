@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wrapper for accessing tabix-indexed files."""
+"""Wrapper for accessing tabix-indexed files"""
 
 import ctypes
 import logging
@@ -13,11 +13,11 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
 
 class TabixIndexException(Exception):
-    """Raised when there is a problem with a TabixIndex file."""
+    """Raised when there is a problem with a TabixIndex file"""
 
 
 class TabixFileException(Exception):
-    """Raised when there is a problem with a TabixFile file."""
+    """Raised when there is a problem with a TabixFile file"""
 
 
 class TabixConfig:
@@ -39,7 +39,7 @@ class TabixConfig:
 
     @staticmethod
     def from_extension(path, min_shift=None):
-        """Return TabixConfig for the given extension."""
+        """Return TabixConfig for the given extension"""
         if path.endswith('.gff.gz'):
             return TabixConfig.from_c_struct('tbx_conf_gff', min_shift)
         elif path.endswith('.bed.gz'):
@@ -279,7 +279,7 @@ class TabixIndex:
             raise TabixIndexException(tpl.format(self.path))
 
     def get_header(self):
-        """Return string with header lines resets iteration to file."""
+        """Return string with header lines resets iteration to file"""
         result = []
         buf = _kstring_t(0, 0, None)
         while _hts_getline(self.file.struct_ptr, _KS_SEP_LINE,
