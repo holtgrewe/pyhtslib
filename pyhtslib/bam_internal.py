@@ -263,7 +263,7 @@ def _bam_index_build(fn, min_shift):
 
 
 def _sam_itr_destroy(itr):
-    return _hts_ir_destroy(itr)
+    return _hts_itr_destroy(itr)
 
 
 def _sam_itr_next(htsfp, itr, r):

@@ -141,3 +141,58 @@ def six_records_bai(tmpdir):
     src.copy(dst)
     yield dst
     dst.remove()
+
+
+@pytest.yield_fixture
+def two_hundred_sam(tmpdir):
+    """Copy the two_hundred.sam file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_hundred.sam')
+    dst = tmpdir.join('two_hundred.sam')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def two_hundred_sam_gz(tmpdir):
+    """Copy the two_hundred.sam.gz file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_hundred.sam.gz')
+    dst = tmpdir.join('two_hundred.sam.gz')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def two_hundred_tbi(tmpdir):
+    """Copy the two_hundred.sam.gz.tbi file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_hundred.sam.gz.tbi')
+    dst = tmpdir.join('two_hundred.sam.gz.tbi')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def two_hundred_bam(tmpdir):
+    """Copy the two_hundred.bam file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_hundred.bam')
+    dst = tmpdir.join('two_hundred.bam')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def two_hundred_bai(tmpdir):
+    """Copy the two_hundred.bam.bai file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'two_hundred.bam.bai')
+    dst = tmpdir.join('two_hundred.bam.bai')
+    src.copy(dst)
+    yield dst
+    dst.remove()

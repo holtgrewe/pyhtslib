@@ -43,15 +43,46 @@ def check_file(f):
 # ---------------------------------------------------------------------------
 
 
-def test_read_sequential_sam(six_records_sam):
+def test_six_records_read_sequential_sam(six_records_sam):
     with bam.BAMFile(str(six_records_sam)) as f:
         check_file(f)
 
 
-def test_read_sequential_sam_gz(six_records_sam_gz):
+def test_six_records_read_sequential_sam_gz(six_records_sam_gz):
     with bam.BAMFile(str(six_records_sam_gz)) as f:
         check_file(f)
 
-def test_read_sequential_bam(six_records_bam):
+
+def test_six_records_read_sequential_bam(six_records_bam):
     with bam.BAMFile(str(six_records_bam)) as f:
         check_file(f)
+
+
+def test_two_hundred_read_sequential_sam(two_hundred_sam):
+    with bam.BAMFile(str(two_hundred_sam)) as f:
+        num = len(list(f))
+        assert num == 200
+
+
+def test_two_hundred_read_sequential_sam_gz(two_hundred_sam_gz):
+    with bam.BAMFile(str(two_hundred_sam_gz)) as f:
+        num = len(list(f))
+        assert num == 200
+
+
+def test_two_hundred_read_sequential_bam(two_hundred_bam):
+    with bam.BAMFile(str(two_hundred_bam)) as f:
+        num = len(list(f))
+        assert num == 200
+
+
+# TODO(holtgrewe): this needs to be fixed
+def XXXtest_two_hundread_through_index_sam_gz(two_hundred_sam_gz, two_hundred_tbi):
+    with bam.BAMIndex(str(two_hundred_sam_gz)) as idx:
+        assert len(list(idx.query('chr17:10,000,000-11,000,000'))) == 2
+
+
+def test_two_hundread_through_index_bam(two_hundred_bam, two_hundred_bai):
+    with bam.BAMIndex(str(two_hundred_bam)) as idx:
+        assert len(list(idx.query('chr17:10,000,000-11,000,000'))) == 2
+        assert len(list(idx.query('chr17:10,000,000-15,000,000'))) == 12

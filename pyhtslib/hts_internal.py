@@ -38,6 +38,7 @@ __all__ = [
     '_hts_open',
     '_hts_close',
     '_hts_getline',
+    '_hts_idx_destroy',
     '_hts_itr_destroy',
     '_hts_itr_next',
     '_hts_itr_query',
@@ -243,6 +244,9 @@ _hts_close.restype = ctypes.c_int
 
 _hts_getline = htslib.hts_getline
 _hts_getline.restype = ctypes.c_int
+
+_hts_idx_destroy = htslib.hts_idx_destroy
+_hts_idx_destroy.restype = None
 
 _hts_itr_destroy = htslib.hts_itr_destroy
 _hts_itr_destroy.restype = None

@@ -271,7 +271,7 @@ class BAMRecordImpl:
         # print('ISIZE={} ({})'.format(isize, type(isize)))
         _l_qseq = ptr[0].core.l_qseq
         _seq_ptr = ctypes.cast(_bam_get_seq(ptr),
-                              ctypes.POINTER(ctypes.c_uint8))
+                               ctypes.POINTER(ctypes.c_uint8))
         seq = ''.join([_BAM_SEQ_STR[_bam_seqi(_seq_ptr, i)]
                        for i in range(_l_qseq)])
         # print('SEQ={} ({})'.format(seq, type(seq)))
@@ -458,7 +458,90 @@ class BAMFileIter:
                 raise StopIteration
 
     def close(self):
+        if not self.struct_ptr:
+            return
         _bam_destroy1(self.struct_ptr)
+        self.struct_ptr = None
+        self.struct = None
+
+
+# TODO(holtgrewe): we probably want to differentiate BAM/CRAM and SAM.gz with
+# two classes
+class BAMIndexIter:
+    """Iterate over query results from a ``BAMIndex``
+
+    Do not use directly but by iterating over query result of``BAMIndex``.
+    Iteration must be completed or ``close()`` must be called to prevent
+    resource leaks.
+    """
+
+    def __init__(self, bam_index, itr):
+        #: the ``BAMIndex`` to iterate through
+        self.bam_index = bam_index
+        #: the ``BAMFile`` used
+        self.bam_file = self.bam_index.bam_file
+        #: buffer for reading in the file itself
+        self.struct_ptr = _bam_init1()
+        #: pointer to buffer for reading in the file record by record
+        self.struct = self.struct_ptr[0]
+        #: pointer to iterator struct to for iteration
+        self.itr_ptr = itr
+        #: iterator struct to use for iteration
+        self.itr = self.itr_ptr[0]
+        #: ``BAMRecord`` meant for consumption by the user
+        self.record = BAMRecord(self.struct_ptr, self.bam_file.header)
+        # buffer to use in case of SAM.gz
+        self._buffer = None
+        if not self.bam_index.is_bam_or_cram:
+            self._buffer = _kstring_t(0, 0, None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.bam_index.is_bam_or_cram:
+            r = _sam_itr_next(self.bam_file.struct_ptr,
+                              self.itr_ptr,
+                              ctypes.byref(self.struct))
+        else:
+            r = _tbx_itr_next(self.bam_file.struct_ptr,
+                              self.bam_index.struct_ptr,
+                              self.itr_ptr,
+                              ctypes.byref(self._buffer))
+        if r >= 0:
+            # attempt to parse SAM, if SAM
+            if not self.bam_index.is_bam_or_cram:
+                _sam_parse1(ctypes.byref(self._buffer),
+                            self.bam_file.header.struct_ptr,
+                            ctypes.byref(self.struct))
+            # successfully read record from file
+            self.record._reset()
+            return self.record
+        else:
+            # end of file or something went wrong
+            self.close()
+            if r < -1:
+                tpl = 'truncated file {}'
+                raise BAMFileException(tpl.format(self.bam_file.path))
+            else:
+                self.close()
+                raise StopIteration
+
+    def close(self):
+        if self.struct_ptr:
+            _bam_destroy1(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
+        if self._buffer:
+            self._buffer.free_p()
+        if self.itr_ptr and self.bam_index.is_bam_or_cram:
+            _sam_itr_destroy(self.itr_ptr)
+            self.itr_ptr = None
+            self.itr = None
+        elif self.itr_ptr and not self.bam_index.is_bam_or_cram:
+            _hts_itr_destroy(self.itr_ptr)
+            self.itr_ptr = None
+            self.itr = None
 
 
 class BAMFile:
@@ -514,21 +597,43 @@ class BAMIndex:
     def build(path, bai_path=None):
         assert False, 'Implement me!'
 
+    @staticmethod
+    def _get_index_ext(path):
+        if path.endswith('.sam.gz'):
+            return '.tbi'
+        elif path.endswith('.bam'):
+            return '.bai'
+        else:
+            tpl = 'Not a valid alignment file extension: {}'
+            raise BAMIndexException(tpl.format(path))
+
     def __init__(self, path, bai_path=None, require_index=True,
                  auto_load=True, auto_build=False):
         #: path to BAM file
         self.path = path
         #: path to BAI (BAM index) file
-        self.bai_path = bai_path or path + '.bai'
+        self.bai_path = bai_path or path + BAMIndex._get_index_ext(path)
+        #: whether or not an index is required on construction
+        self.require_index = require_index
+        #: whether or not to automatically load the index
+        self.auto_load = auto_load
+        #: whether or not to automatically build the index
+        self.auto_build = auto_build
+        #: whether or not is BAM/CRAM (alternative is SAM+tabix)
+        self.is_bam_or_cram = not self.path.endswith('.sam.gz')
 
         #: the ``BAMFile`` to use for reading
-        self.file = BAMFile(self.path)
-        self.file.open()
+        self.bam_file = BAMFile(self.path)
+        self.bam_file.open()
 
         #: wrapped C struct
         self.struct = None
         #: pointer to C struct
         self.struct_ptr = None
+
+        self._check_auto_build()
+        self._check_auto_load()
+        self._check_require_index()
 
     def _check_file_ages(self):
         mtime_file = os.path.getmtime(self.path)
@@ -554,8 +659,8 @@ class BAMIndex:
             # load index
             self.load()
         else:
-            tpl = 'BAM index required for {} for loading but not found.'
-            raise BAMIndexException(tpl.format(self.path))
+            tpl = 'Index {} required for {} for loading but not found.'
+            raise BAMIndexException(tpl.format(self.bai_path, self.path))
 
     def _check_require_index(self):
         if not self.require_index:
@@ -564,13 +669,68 @@ class BAMIndex:
             tpl = 'BAM index required for {} but not found.'
             raise BAMIndexException(tpl.format(self.path))
 
+    # TODO(holtgrewe): fix exception display if not region_string
+    def query(self, region_str=None, seq=None, begin=None, end=None):
+        if (region_str is None and
+                (seq is None or begin is None or end is None)):
+            raise BAMIndexException(
+                'You have to either give region_str or seq/begin/end')
+        if not self.is_bam_or_cram:
+            if region_str:
+                ptr = _tbx_itr_querys(self.struct_ptr,
+                                      region_str.encode('utf-8'))
+            else:
+                ptr = _tbx_itr_queryi(self.struct_ptr, seq, begin, end)
+        else:
+            if region_str:
+                ptr = _sam_itr_querys(self.struct_ptr,
+                                      self.bam_file.header.struct_ptr,
+                                      region_str.encode('utf-8'))
+            else:
+                ptr = _sam_itr_queryi(self.struct_ptr, seq, begin, end)
+        if not ptr:
+            tpl = 'Could not jump to {}'
+            raise BAMIndexException(tpl.format(region_str))
+        return BAMIndexIter(self, ptr)
+
+    def load(self):
+        self.close(close_file=False)
+        if not self.is_bam_or_cram and self.bai_path:
+            self.struct_ptr = _tbx_index_load2(self.path.encode('utf-8'),
+                                               self.bai_path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load tabix index {} for {}'
+                raise BAMIndexException(tpl.format(self.bai_path, self.path))
+        elif not self.is_bam_or_cram and not self.bai_path:
+            self.struct_ptr = _tbx_index_load(self.path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load tabix index for {}'
+                raise BAMIndexException(tpl.format(self.path))
+        elif self.bai_path:
+            self.struct_ptr = _sam_index_load2(self.bam_file.struct_ptr,
+                                               self.path.encode('utf-8'),
+                                               self.bai_path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load BAM/CRAM index {} for {}'
+                raise BAMIndexException(tpl.format(self.bai_path, self.path))
+        else:
+            self.struct_ptr = _sam_index_load(self.bam_file.struct_ptr,
+                                              self.path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load BAM/CRAM index for {}'
+                raise BAMIndexException(tpl.format(self.path))
+        self.struct = self.struct_ptr[0]
+
     def close(self, close_file=True):
         if self.struct_ptr:
-            _hts_idx_destroy(self.struct_ptr)
+            if self.path.endswith('.sam.gz'):
+                _tbx_destroy(self.struct_ptr)
+            else:
+                _hts_idx_destroy(self.struct_ptr)
         self.struct = None
         self.struct_ptr = None
         if close_file:
-            self.file.close()
+            self.bam_file.close()
 
     def __enter__(self):
         return self

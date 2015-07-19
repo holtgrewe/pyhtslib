@@ -292,6 +292,7 @@ class TabixIndex:
         buf.free_p()
         return ''.join(result)
 
+    # TODO(holtgrewe): fix exception display if not region_string
     def query(self, region_str=None, seq=None, begin=None, end=None):
         if (region_str is None and
                 (seq is None or begin is None or end is None)):
