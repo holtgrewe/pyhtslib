@@ -67,17 +67,6 @@ def header_only_sam_gz_header(header_only_sam_gz):
 
 
 @pytest.yield_fixture
-def header_only_tbi(tmpdir):
-    """Copy the header_only.sam.gz.tbi file to temporary directory."""
-    src = py.path.local(os.path.dirname(__file__)).join(
-        'files', 'header_only.sam.gz.tbi')
-    dst = tmpdir.join('header_only.sam.gz.tbi')
-    src.copy(dst)
-    yield dst
-    dst.remove()
-
-
-@pytest.yield_fixture
 def header_only_bam(tmpdir):
     """Copy the header_only.bam file to temporary directory."""
     src = py.path.local(os.path.dirname(__file__)).join(
@@ -86,16 +75,6 @@ def header_only_bam(tmpdir):
     src.copy(dst)
     yield dst
     dst.remove()
-
-
-@pytest.yield_fixture
-def header_only_bam_header(header_only_bam):
-    hts_file = hts_internal._hts_open(
-        str(header_only_bam).encode('utf-8'), 'r')
-    hdr = bam_internal._sam_hdr_read(hts_file)
-    yield hdr
-    bam_internal._bam_hdr_destroy(hdr)
-    hts_internal._hts_close(hts_file)
 
 
 @pytest.yield_fixture
@@ -157,16 +136,16 @@ def check_header_of_header_only_sam(header):
             [('ID', 'bowtie2'), ('PN', 'bowtie2'), ('VN', '2.0.0-beta5')]))]
 
 
-def test_read_header_from_sam(header_only_sam_header):
-    header = bam.BAMHeader(header_only_sam_header)
-    check_header_of_header_only_sam(header)
+def test_read_header_from_sam(header_only_sam):
+    with bam.BAMFile(str(header_only_sam)) as f:
+        check_header_of_header_only_sam(f.header)
 
 
-def test_read_header_from_sam_gz(header_only_sam_gz_header):
-    header = bam.BAMHeader(header_only_sam_gz_header)
-    check_header_of_header_only_sam(header)
+def test_read_header_from_sam_gz(header_only_sam_gz):
+    with bam.BAMFile(str(header_only_sam_gz)) as f:
+        check_header_of_header_only_sam(f.header)
 
 
-def test_read_header_from_bam(header_only_bam_header):
-    header = bam.BAMHeader(header_only_bam_header)
-    check_header_of_header_only_sam(header)
+def test_read_header_from_bam(header_only_bam):
+    with bam.BAMFile(str(header_only_bam)) as f:
+        check_header_of_header_only_sam(f.header)

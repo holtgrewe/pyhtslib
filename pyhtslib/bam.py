@@ -9,6 +9,7 @@ import os.path
 import sys  # NOQA TODO(holtgrew): remove?
 
 from pyhtslib.hts_internal import *  # NOQA
+from pyhtslib.bam_internal import *  # NOQA
 from pyhtslib.tabix_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
@@ -94,6 +95,10 @@ class BAMHeaderComment:
 class BAMHeader:
     """Information stored in the BAM header"""
 
+    @staticmethod
+    def read_from_file(file_ptr):
+        return BAMHeader(_sam_hdr_read(file_ptr))
+
     def __init__(self, struct_ptr=None):
         #: pointer to internal representation
         self.struct_ptr = struct_ptr
@@ -124,6 +129,18 @@ class BAMHeader:
             else:
                 recs.append(BAMHeaderRecord.from_sam_header(line))
 
+    def free(self):
+        """Free structs associated with the header
+
+        If you use ``BAMFile`` as a context manager (using ``with``) then
+        this function is called automatically when the context is left.
+        """
+        if not self.struct_ptr:
+            return  # not set
+        _bam_hdr_destroy(self.struct_ptr)
+        self.struct_ptr = None
+        self.struct = None
+
     def to_sam_header(self):
         """Return SAM header representation"""
         def f(entry):
@@ -132,17 +149,39 @@ class BAMHeader:
 
 
 class BAMFile:
-    """Wrapper for SAM/BAM/CRAM access"""
+    """Wrapper for SAM/BAM/CRAM access
+   
+    It's strongly recommended to use as a context manager
+    """
 
     def __init__(self, path):
         #: path to BAM file
         self.path = path
+        #: wrapped C struct
+        self.struct = None
+        #: pointer to C struct
+        self.struct_ptr = None
+        #: representation of BAM header
+        self.header = None
+
+        self.open()
 
     def open(self):
-        pass
+        """Open file and read header"""
+        if self.struct_ptr:
+            return  # already open
+        # open file and store handles
+        self.struct_ptr = _hts_open(self.path.encode('utf-8'), 'r')
+        self.struct = self.struct_ptr[0]
+        # read header
+        self.header = BAMHeader.read_from_file(self.struct_ptr)
 
     def close(self):
-        pass
+        """Close file again and free header and other data structures"""
+        self.header.free()
+        _hts_close(self.struct_ptr)
+        self.struct_ptr = None
+        self.struct = None
 
     def __enter__(self):
         return self
