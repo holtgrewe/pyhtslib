@@ -6,8 +6,6 @@ This file contains tests for the header-related code.
 
 # TODO(holtgrewe): tests for CRAM
 
-import sys  # NOQA  TODO(holtgrew): remove again
-
 from collections import OrderedDict  # for brevity
 
 import pyhtslib.bam as bam
