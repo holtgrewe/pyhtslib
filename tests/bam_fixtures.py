@@ -77,3 +77,67 @@ def header_only_bai(tmpdir):
     src.copy(dst)
     yield dst
     dst.remove()
+
+
+@pytest.yield_fixture
+def six_records_sam(tmpdir):
+    """Copy the six_records.sam file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'six_records.sam')
+    dst = tmpdir.join('six_records.sam')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def six_records_sam_header(six_records_sam):
+    hts_file = hts_internal._hts_open(
+        str(six_records_sam).encode('utf-8'), 'r')
+    hdr = bam_internal._sam_hdr_read(hts_file)
+    yield hdr
+    bam_internal._bam_hdr_destroy(hdr)
+    hts_internal._hts_close(hts_file)
+
+
+@pytest.yield_fixture
+def six_records_sam_gz(tmpdir):
+    """Copy the six_records.sam.gz file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'six_records.sam.gz')
+    dst = tmpdir.join('six_records.sam.gz')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def six_records_sam_gz_header(six_records_sam_gz):
+    hts_file = hts_internal._hts_open(
+        str(six_records_sam_gz).encode('utf-8'), 'r')
+    hdr = bam_internal._sam_hdr_read(hts_file)
+    yield hdr
+    bam_internal._bam_hdr_destroy(hdr)
+    hts_internal._hts_close(hts_file)
+
+
+@pytest.yield_fixture
+def six_records_bam(tmpdir):
+    """Copy the six_records.bam file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'six_records.bam')
+    dst = tmpdir.join('six_records.bam')
+    src.copy(dst)
+    yield dst
+    dst.remove()
+
+
+@pytest.yield_fixture
+def six_records_bai(tmpdir):
+    """Copy the six_records.bam.bai file to temporary directory."""
+    src = py.path.local(os.path.dirname(__file__)).join(
+        'files', 'six_records.bam.bai')
+    dst = tmpdir.join('six_records.bam.bai')
+    src.copy(dst)
+    yield dst
+    dst.remove()

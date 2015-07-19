@@ -148,10 +148,78 @@ class BAMHeader:
         return '\n'.join(map(f, self.header_record))
 
 
+class BAMRecord:
+    """Record from a BAM file"""
+
+    def __init__(self, struct_ptr):
+        #: pointer to wrapped C struct
+        self.struct_ptr = struct_ptr
+        #: wrapped C struct
+        self.struct = self.struct_ptr[0]
+
+    def detach(self):
+        """Detach from wrapped C struct
+
+        The only way of obtaining ``BAMRecords`` is through iterating
+        ``BAMFile`` objects, either through an index or not.  For efficiency,
+        the reading reuses the same buffer for reading.  If you want to keep a
+        ``BAMRecord`` around for longer than the current iteration then you
+        have to obtain a copy that is independent of the current buffer
+        through the use of ``detach()``.
+        """
+
+    def _reset(self):
+        """Reset Python side, as if freshly constructed"""
+
+
+class BAMFileIter:
+    """Iterate over a ``BAMFile``
+
+    Do not use directly but by iterating over ``BAMFile``.  Iteration must
+    be completed or ``close()`` must be called to prevent resource leaks.
+    """
+
+    def __init__(self, bam_file):
+        #: the ``BAMFile`` to iterate through
+        self.bam_file = bam_file
+        #: pointer to buffer for reading in the file record by record
+        self.struct_ptr = _bam_init1()
+        #: buffer for readin in the file itself
+        self.struct = self.struct_ptr[0]
+        #: ``BAMRecord`` meant for consumption by the user
+        self.record = BAMRecord(self.struct_ptr)
+
+    def __next__(self):
+        r = _sam_read1(self.bam_file.struct_ptr,
+                       self.bam_file.header.struct_ptr,
+                       self.struct_ptr)
+        if r >= 0:
+            # successfully read record from file
+            self.record._reset()
+            return self.record
+        else:
+            # end of file or something went wrong
+            self.close()
+            if r < -1:
+                tpl = 'truncated file {}'
+                raise BAMFileException(tpl.format(self.bam_file.path))
+            else:
+                self.close()
+                raise StopIteration
+
+    def close(self):
+        if not self.struct_ptr:
+            return
+        _bam_destroy1(self.struct_ptr)
+        self.struct_ptr = None
+        self.struct = None
+
+
 class BAMFile:
     """Wrapper for SAM/BAM/CRAM access
 
-    It's strongly recommended to use as a context manager
+    It's strongly recommended to use as a context manager or through
+    ``BAMIndex``.
     """
 
     def __init__(self, path):
@@ -182,6 +250,9 @@ class BAMFile:
         _hts_close(self.struct_ptr)
         self.struct_ptr = None
         self.struct = None
+
+    def __iter__(self):
+        return BAMFileIter(self)
 
     def __enter__(self):
         return self
