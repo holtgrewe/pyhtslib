@@ -76,8 +76,8 @@ def test_two_hundred_read_sequential_bam(two_hundred_bam):
         assert num == 200
 
 
-# TODO(holtgrewe): this needs to be fixed
-def XXXtest_two_hundread_through_index_sam_gz(two_hundred_sam_gz, two_hundred_tbi):
+def test_two_hundread_through_index_sam_gz(
+        two_hundred_sam_gz, two_hundred_tbi):
     with bam.BAMIndex(str(two_hundred_sam_gz)) as idx:
         assert len(list(idx.query('chr17:10,000,000-11,000,000'))) == 2
 

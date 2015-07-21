@@ -534,12 +534,13 @@ class BAMIndexIter:
             self.struct = None
         if self._buffer:
             self._buffer.free_p()
+            self._buffer = None
         if self.itr_ptr and self.bam_index.is_bam_or_cram:
             _sam_itr_destroy(self.itr_ptr)
             self.itr_ptr = None
             self.itr = None
         elif self.itr_ptr and not self.bam_index.is_bam_or_cram:
-            _hts_itr_destroy(self.itr_ptr)
+            _tbx_itr_destroy(self.itr_ptr)
             self.itr_ptr = None
             self.itr = None
 
