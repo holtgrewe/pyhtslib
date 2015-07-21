@@ -99,12 +99,25 @@ class NormalTabixFileIter:
                          self.struct_ptr, ctypes.byref(self._buffer)) >= 0:
             return self._buffer.s.decode('utf-8')
         else:
-            _hts_itr_destroy(self.struct_ptr)
-            self._buffer.free_p()
+            self.close()
+            if self._buffer:
+                self._buffer.free_p()
             raise StopIteration()
 
+    def close(self):
+        """Free all associated resources
 
-# TODO(holtgrew): free iterator even if breaking loop
+        This function is idempotent.
+        """
+        if self.struct_ptr:
+            _hts_itr_destroy(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
+        if self._buffer:
+            self._buffer.free_p()
+            self._buffer = None
+
+
 class AllTabixFileIter:
     """Allows iteration over the whole tabix file"""
 
@@ -146,12 +159,22 @@ class AllTabixFileIter:
                                      ctypes.byref(self._buffer)) >= 0:
                         return self._buffer.s.decode('utf-8')
                 except StopIteration:
-                    self.current_chrom = None
-                    _tbx_itr_destroy(self.struct_ptr)
-                    self._buffer.free_p()
-                    self.struct_ptr = None
-                    self.struct = None
+                    self.close()
                     raise StopIteration()
+
+    def close(self):
+        """Free resources associated with the iterator
+
+        This function is idempotent.
+        """
+        self.current_chrom = None
+        if self.struct_ptr:
+            _tbx_itr_destroy(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
+        if self._buffer:
+            self._buffer.free_p()
+            self._buffer = None
 
 
 class TabixFile:
@@ -177,11 +200,16 @@ class TabixFile:
         self.struct = self.struct_ptr[0]
 
     def close(self):
-        if _hts_close(self.struct_ptr) != 0:
-            tpl = 'Problem closing tabix file {}'
-            raise TabixFileException(tpl.format(self.path))
-        self.struct_ptr = None
-        self.struct = None
+        """Free all associated resources
+
+        This function is idempotent.
+        """
+        if self.struct_ptr:
+            if _hts_close(self.struct_ptr) != 0:
+                tpl = 'Problem closing tabix file {}'
+                raise TabixFileException(tpl.format(self.path))
+            self.struct_ptr = None
+            self.struct = None
 
     def __enter__(self):
         return self
@@ -239,6 +267,10 @@ class TabixIndex:
         self.struct = None
         #: pointer to C struct
         self.struct_ptr = None
+
+        # collection of iterators, we will call close() on all of them
+        # in our own close to ensure that all memory is freed
+        self.iterators = []
 
         self._check_auto_build()
         self._check_auto_load()
@@ -306,10 +338,12 @@ class TabixIndex:
         if not ptr:
             tpl = 'Could not jump to {}'
             raise TabixIndexException(tpl.format(region_str))
-        return NormalTabixFileIter(self, ptr)
+        self.iterators.append(NormalTabixFileIter(self, ptr))
+        return self.iterators[-1]
 
     def from_start(self):
-        return AllTabixFileIter(self)
+        self.iterators.append(AllTabixFileIter(self))
+        return self.iterators[-1]
 
     def __iter__(self):
         return iter(self.from_start())
@@ -333,10 +367,13 @@ class TabixIndex:
     def close(self, close_file=True):
         if self.struct_ptr:
             _tbx_destroy(self.struct_ptr)
-        self.struct = None
-        self.struct_ptr = None
+            self.struct = None
+            self.struct_ptr = None
         if close_file:
             self.file.close()
+        for it in self.iterators:
+            it.close()
+        self.iterators = []
 
     def __enter__(self):
         return self

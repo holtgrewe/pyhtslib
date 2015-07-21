@@ -2,11 +2,10 @@
 """Access to SAM and BAM files through htslib"""
 
 import collections
-import ctypes  # NOQA TODO(holtgrew): remove "NOQA"
+import ctypes
 import logging
 import os
 import os.path
-import sys  # NOQA TODO(holtgrew): remove?
 
 from pyhtslib.hts_internal import *  # NOQA
 from pyhtslib.bam_internal import *  # NOQA
@@ -458,11 +457,10 @@ class BAMFileIter:
                 raise StopIteration
 
     def close(self):
-        if not self.struct_ptr:
-            return
-        _bam_destroy1(self.struct_ptr)
-        self.struct_ptr = None
-        self.struct = None
+        if self.struct_ptr:
+            _bam_destroy1(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
 
 
 # TODO(holtgrewe): we probably want to differentiate BAM/CRAM and SAM.gz with
@@ -562,6 +560,10 @@ class BAMFile:
         #: representation of BAM header
         self.header = None
 
+        # collection of iterators, we will call close() on all of them
+        # in our own close to ensure that all memory is freed
+        self.iterators = []
+
         self.open()
 
     def open(self):
@@ -575,14 +577,22 @@ class BAMFile:
         self.header = BAMHeader.read_from_file(self.struct_ptr)
 
     def close(self):
-        """Close file again and free header and other data structures"""
+        """Close file again and free header and other data structures
+
+        This function is idempotent
+        """
         self.header.free()
-        _hts_close(self.struct_ptr)
-        self.struct_ptr = None
-        self.struct = None
+        if self.struct_ptr:
+            _hts_close(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
+        for it in self.iterators:
+            it.close()
+        self.iterators = []
 
     def __iter__(self):
-        return BAMFileIter(self)
+        self.iterators.append(BAMFileIter(self))
+        return self.iterators[-1]
 
     def __enter__(self):
         return self
@@ -626,6 +636,10 @@ class BAMIndex:
         #: the ``BAMFile`` to use for reading
         self.bam_file = BAMFile(self.path)
         self.bam_file.open()
+
+        # collection of iterators, we will call close() on all of them
+        # in our own close to ensure that all memory is freed
+        self.iterators = []
 
         #: wrapped C struct
         self.struct = None
@@ -728,10 +742,13 @@ class BAMIndex:
                 _tbx_destroy(self.struct_ptr)
             else:
                 _hts_idx_destroy(self.struct_ptr)
-        self.struct = None
-        self.struct_ptr = None
+            self.struct = None
+            self.struct_ptr = None
         if close_file:
             self.bam_file.close()
+        for it in self.iterators:
+            it.close()
+        self.iterators = []
 
     def __enter__(self):
         return self

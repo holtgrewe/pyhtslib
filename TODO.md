@@ -4,3 +4,5 @@
   immutability
 * allow setting number of (de-)compression threads
 * use 0-based coordinates in the API
+* CRAM support
+* convert to Cython
