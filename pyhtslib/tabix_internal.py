@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Implementation details for the Tabix format."""
+"""Implementation details for the Tabix format"""
 
 import ctypes
 
