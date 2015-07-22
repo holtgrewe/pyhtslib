@@ -117,6 +117,8 @@ __all__ = [
     '_bcf_hdr_get_version',
     '_bcf_itr_next',
     '_bcf_init',
+    '_bcf_init1',
+    '_bcf_destroy1',
     '_bcf_hdr_seqnames',
     '_bcf_hdr_id2int',
     '_bcf_hdr_id2length',
@@ -138,9 +140,11 @@ __all__ = [
     '_bcf_hdr_get_sample_name',
     '_bcf_hdr_destroy',
     '_bcf_rec_nalleles',
-    '_bcf_init1',
     '_bcf_itr_querys',
     '_bcf_index_load',
+
+    '_vcf_read1',
+    '_vcf_read',
 ]
 
 # ----------------------------------------------------------------------------
@@ -384,6 +388,9 @@ def _bcf_itr_next(htsfp, itr, r):
 _bcf_init = htslib.bcf_init
 _bcf_init.restype = ctypes.POINTER(_bcf1_t)
 
+_bcf_destroy = htslib.bcf_destroy
+_bcf_destroy.restype = None
+
 _bcf_hdr_seqnames = htslib.bcf_hdr_seqnames
 _bcf_hdr_seqnames.restype = ctypes.POINTER(ctypes.c_char_p)
 
@@ -479,6 +486,11 @@ def _bcf_init1():
     return _bcf_init()
 
 
+def _bcf_destroy1(ptr):
+    """Replacement for C macro ``bcf_destroy1``."""
+    return _bcf_destroy(ptr)
+
+
 def _bcf_itr_querys(idx, hdr, s):
     """Replacement for the C macro ``tbx_itr_querys()``"""
     return _hts_itr_querys(idx, s, _bcf_hdr_name2id, hdr, _hts_itr_query,
@@ -487,3 +499,11 @@ def _bcf_itr_querys(idx, hdr, s):
 
 def _bcf_index_load(fn):
     return _hts_idx_load(fn, HTS_FMT_CSI)
+
+
+_vcf_read = htslib.vcf_read
+_vcf_read.restype = ctypes.c_int
+
+
+def _vcf_read1(p, h, v):
+    return _vcf_read(p, h, v)

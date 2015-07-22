@@ -3,6 +3,7 @@
 
 import collections
 import ctypes  # TODO(holtgrew): remove?
+import sys  # NOQA  # TODO(holtgrew): remove?
 
 from pyhtslib.hts_internal import *  # NOQA
 from pyhtslib.bcf_internal import *  # NOQA
@@ -344,7 +345,7 @@ class BCFRecordImpl:
     @staticmethod
     def from_struct(ptr, header):
         # TODO(holtgrewe): write me!
-        return BCFRecord(ptr, header)
+        return BCFRecordImpl(ptr, header)
 
     def __init__(self, *args, **kwargs):
         # TODO(holtgrewe): write me!
@@ -413,7 +414,7 @@ class BCFFileIter:
         #: ``BCFRecord`` meant for consumption by the user
         self.record = BCFRecord(self.struct_ptr, self.bcf_file.header)
         # whether or not iterating over BCF file
-        self.is_bcf = (self.bcf_file.format == 'BCF')
+        self.is_bcf = (self.bcf_file.file_format == 'BCF')
 
     def __next__(self):
         read = _bcf_read1 if self.is_bcf else _vcf_read1
