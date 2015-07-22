@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Tests for reading BAM files sequentially"""
+"""Tests for reading BAM files sequentially or through indices"""
 
 # TODO(holtgrewe): tests for CRAM
 
