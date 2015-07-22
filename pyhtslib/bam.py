@@ -95,7 +95,7 @@ class BAMHeader:
     """Information stored in the BAM header"""
 
     @staticmethod
-    def read_from_file(file_ptr):
+    def _read_from_file(file_ptr):
         return BAMHeader(_sam_hdr_read(file_ptr))
 
     def __init__(self, struct_ptr=None):
@@ -394,7 +394,7 @@ class BAMRecord:
     def detach(self):
         """Return copy that is detached from the underlying C object
 
-        The only way of obtaining ``BAMRecords`` is through iterating
+        The only way of obtaining ``BAMRecord``s is through iterating
         ``BAMFile`` objects, either through an index or not.  For efficiency,
         the reading reuses the same buffer for reading.  If you want to keep a
         ``BAMRecord`` around for longer than the current iteration then you
@@ -564,8 +564,6 @@ class BAMFile:
         # in our own close to ensure that all memory is freed
         self.iterators = []
 
-        self.open()
-
     def open(self):
         """Open file and read header"""
         if self.struct_ptr:
@@ -574,7 +572,7 @@ class BAMFile:
         self.struct_ptr = _hts_open(self.path.encode('utf-8'), 'r')
         self.struct = self.struct_ptr[0]
         # read header
-        self.header = BAMHeader.read_from_file(self.struct_ptr)
+        self.header = BAMHeader._read_from_file(self.struct_ptr)
 
     def close(self):
         """Close file again and free header and other data structures
@@ -595,6 +593,7 @@ class BAMFile:
         return self.iterators[-1]
 
     def __enter__(self):
+        self.open()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

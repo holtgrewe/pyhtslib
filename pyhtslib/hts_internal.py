@@ -45,9 +45,9 @@ __all__ = [
     '_hts_itr_querys',
     '_tbx_readrec',
     # wrapper Types
-    'HTSFormatCategory',
-    'HTSExactFormat',
-    'HTSCompression',
+    '_HTSFormatCategory',
+    '_HTSExactFormat',
+    '_HTSCompression',
 ]
 
 
@@ -100,7 +100,7 @@ class _kstring_t(ctypes.Structure):
         _libc.free(self.p)
 
 
-class HTSFormatCategory:
+class _HTSFormatCategory:
     """Wrapper for the htslib type `htsFormatCategory`."""
 
     UNKNOWN_CATEGORY = 0
@@ -123,7 +123,7 @@ class HTSFormatCategory:
         return DICT[value]
 
 
-class HTSExactFormat:
+class _HTSExactFormat:
     """Wrapper for the htslib type `htsExactFormat`."""
 
     UNKNOWN_FORMAT = 0
@@ -164,7 +164,7 @@ class HTSExactFormat:
         return DICT[value]
 
 
-class HTSCompression:
+class _HTSCompression:
     """Wrapper for the htslib type htsExactFormat."""
 
     NO_COMPRESSION = 0

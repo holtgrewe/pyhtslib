@@ -151,7 +151,7 @@ _BCF_HL_GEN = 5  # generic header line
 _BCF_HT_FLAG = 0  # header type
 _BCF_HT_INT = 1
 _BCF_HT_REAL = 2
-_BCF_HT_STR =  3
+_BCF_HT_STR = 3
 
 _BCF_VL_FIXED = 0  # variable length
 _BCF_VL_VAR = 1
@@ -241,6 +241,12 @@ class _bcf_idinfo_t(ctypes.Structure):
                 ('id', ctypes.c_int)]
 
 
+class _bcf_idpair_t(ctypes.Structure):
+
+    _fields_ = [('key', ctypes.c_char_p),
+                ('val', ctypes.POINTER(_bcf_idinfo_t))]
+
+
 class _bcf_hdr_t(ctypes.Structure):
 
     _fields_ = [('n', ctypes.c_int32 * 3),
@@ -254,7 +260,7 @@ class _bcf_hdr_t(ctypes.Structure):
                 ('transl', ctypes.POINTER(ctypes.c_int) * 2),
                 ('nsamples_ori', ctypes.c_int),
                 ('keep_samples', ctypes.POINTER(ctypes.c_uint8)),
-                ('mem', kstring_t)]
+                ('mem', _kstring_t)]
 
 
 class _variant_t(ctypes.Structure):
@@ -292,6 +298,7 @@ class _bcf_info_t(ctypes.Structure):
                 ('vptr_off', ctypes.c_uint32, 31),
                 ('vptr_free', ctypes.c_uint32, 1)]
 
+
 class _bcf_dec_t(ctypes.Structure):
 
     _fields_ = [('m_fmt', ctypes.c_int),
@@ -314,7 +321,7 @@ class _bcf_dec_t(ctypes.Structure):
                 ('n_indiv_dirty', ctypes.c_int)]
 
 
-class _bcf1_t(ctypes.Struture):
+class _bcf1_t(ctypes.Structure):
 
     _fields_ = [('rid', ctypes.c_int32),
                 ('pos', ctypes.c_int32),
@@ -327,10 +334,10 @@ class _bcf1_t(ctypes.Struture):
                 ('shared', _kstring_t),
                 ('indiv', _kstring_t),
                 ('d', _bcf_dec_t),
-                ('max_unpack', ctype.c_int),
-                ('unpacked', ctype.c_int),
-                ('unpack_size', ctype.c_int * 3),
-                ('errcode', ctype.c_int)]
+                ('max_unpack', ctypes.c_int),
+                ('unpacked', ctypes.c_int),
+                ('unpack_size', ctypes.c_int * 3),
+                ('errcode', ctypes.c_int)]
 
 # ----------------------------------------------------------------------------
 # C functions and their return types
@@ -339,20 +346,20 @@ class _bcf1_t(ctypes.Struture):
 htslib = pl.load_htslib()
 
 # put into .so by us, was static inline
-_bcf_hdr_name2id = libhts.pyhtslib_bcf_hdr_name2id
+_bcf_hdr_name2id = htslib.pyhtslib_bcf_hdr_name2id
 _bcf_hdr_name2id.restype = ctypes.c_int
 
-_bcf_readrec = libhts.bcf_readrec
+_bcf_readrec = htslib.bcf_readrec
 _bcf_readrec.restype = ctypes.c_int
 
 # our extension, from vt
-_bcf_alt_hdr_read = libhts.bcf_alt_hdr_read
-_bcf_alt_hdr_read.restype = ctypes.POINTER(BCFHdrStruct)
+_bcf_alt_hdr_read = htslib.bcf_alt_hdr_read
+_bcf_alt_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
 
-_bcf_read = libhts.bcf_read
+_bcf_read = htslib.bcf_read
 _bcf_read.restype = ctypes.c_int
 
-_bcf_hdr_get_version = libhts.bcf_hdr_get_version
+_bcf_hdr_get_version = htslib.bcf_hdr_get_version
 _bcf_hdr_get_version.restype = ctypes.c_char_p
 
 
@@ -361,30 +368,30 @@ def _bcf_itr_next(htsfp, itr, r):
     _hts_itr_next(htsfp[0].fp.bgzf, itr, r, 0)
 
 
-_bcf_init = libhts.bcf_init
-_bcf_init.restype = ctypes.POINTER(BCF1Struct)
+_bcf_init = htslib.bcf_init
+_bcf_init.restype = ctypes.POINTER(_bcf1_t)
 
-_bcf_hdr_seqnames = libhts.bcf_hdr_seqnames
+_bcf_hdr_seqnames = htslib.bcf_hdr_seqnames
 _bcf_hdr_seqnames.restype = ctypes.POINTER(ctypes.c_char_p)
 
-_bcf_hdr_id2int = libhts.bcf_hdr_id2int
+_bcf_hdr_id2int = htslib.bcf_hdr_id2int
 _bcf_hdr_id2int.restype = ctypes.c_int
 
 
 def _bcf_hdr_id2length(hdr, type_, int_id):
-    return (hdr[0].id[BCF_DT_ID][int_id].val[0].info[type_] >> 8) & 0xf
+    return (hdr[0].id[_BCF_DT_ID][int_id].val[0].info[type_] >> 8) & 0xf
 
 
 def _bcf_hdr_id2number(hdr, type_, int_id):
-    return (hdr[0].id[BCF_DT_ID][int_id].val[0].info[type_] >> 12)
+    return (hdr[0].id[_BCF_DT_ID][int_id].val[0].info[type_] >> 12)
 
 
 def _bcf_hdr_id2type(hdr, type_, int_id):
-    return (hdr[0].id[BCF_DT_ID][int_id].val[0].info[type_] >> 4) & 0xf
+    return (hdr[0].id[_BCF_DT_ID][int_id].val[0].info[type_] >> 4) & 0xf
 
 
 def _bcf_hdr_id2coltype(hdr, type_, int_id):
-    return hdr[0].id[BCF_DT_ID][int_id].val[0].info[type_] & 0xf
+    return hdr[0].id[_BCF_DT_ID][int_id].val[0].info[type_] & 0xf
 
 
 def _bcf_hdr_info_exists(hdr, type_, int_id):
@@ -392,31 +399,32 @@ def _bcf_hdr_info_exists(hdr, type_, int_id):
 
 
 def _bcf_hdr_id2hrec(hdr, dict_type, col_type, int_id):
-    return hdr[0].id[BCF_DT_CTG if (dict_type == BCF_DT_CTG) else BCF_DT_ID][
-        0].hrec[0 if (dict_type == BCF_DT_CTG) else col_type]
+    return hdr[0].id[_BCF_DT_CTG if (dict_type == _BCF_DT_CTG)
+                     else _BCF_DT_ID][0].hrec[
+                         0 if (dict_type == _BCF_DT_CTG) else col_type]
 
 
-_bcf_unpack = libhts.bcf_unpack
+_bcf_unpack = htslib.bcf_unpack
 _bcf_unpack.restype = ctypes.c_int
 
-_bcf_get_info_values = libhts.bcf_get_info_values
+_bcf_get_info_values = htslib.bcf_get_info_values
 _bcf_get_info_values.restype = ctypes.c_int
 
 
 def _bcf_get_info_int32(hdr, line, tag, dst, ndst):
-    return _bcf_get_info_values(hdr, line, tag, dst, ndst, BCF_HT_INT)
+    return _bcf_get_info_values(hdr, line, tag, dst, ndst, _BCF_HT_INT)
 
 
 def _bcf_get_info_float(hdr, line, tag, dst, ndst):
-    return _bcf_get_info_values(hdr, line, tag, dst, ndst, BCF_HT_REAL)
+    return _bcf_get_info_values(hdr, line, tag, dst, ndst, _BCF_HT_REAL)
 
 
 def _bcf_get_info_string(hdr, line, tag, dst, ndst):
-    return _bcf_get_info_values(hdr, line, tag, dst, ndst, BCF_HT_STR)
+    return _bcf_get_info_values(hdr, line, tag, dst, ndst, _BCF_HT_STR)
 
 
 def _bcf_get_info_flag(hdr, line, tag, dst, ndst):
-    return _bcf_get_info_values(hdr, line, tag, dst, ndst, BCF_HT_FLAG)
+    return _bcf_get_info_values(hdr, line, tag, dst, ndst, _BCF_HT_FLAG)
 
 
 def _bcf_hdr_int2id(hdr, type_, int_id):
@@ -425,19 +433,19 @@ def _bcf_hdr_int2id(hdr, type_, int_id):
 
 def _bcf_hdr_nids(hdr):
     """Helper function that returns the number of IDs"""
-    return hdr[0].n[BCF_DT_ID]
+    return hdr[0].n[_BCF_DT_ID]
 
 
 def _bcf_hdr_nsequences(hdr):
     """Helper function that returns the number of sequences"""
-    return hdr[0].n[BCF_DT_CTG]
+    return hdr[0].n[_BCF_DT_CTG]
 
 
 def _bcf_hdr_nsamples(hdr):
     """Helper function that returns the number of sequences
     Replacement for C macro ``bcf_hdr_nsamples``.
     """
-    return hdr[0].n[BCF_DT_SAMPLE]
+    return hdr[0].n[_BCF_DT_SAMPLE]
 
 
 def _bcf_hdr_get_sample_name(hdr, i):
