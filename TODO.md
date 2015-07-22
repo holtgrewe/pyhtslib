@@ -6,3 +6,4 @@
 * use 0-based coordinates in the API
 * CRAM support
 * convert to Cython
+* lazy loading of INFO and genotypes in BCFRecord

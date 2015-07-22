@@ -114,6 +114,7 @@ __all__ = [
     '_bcf_hdr_read',
     '_bcf_alt_hdr_read',
     '_bcf_read',
+    '_bcf_read1',
     '_bcf_hdr_get_version',
     '_bcf_itr_next',
     '_bcf_init',
@@ -307,7 +308,7 @@ class _bcf_info_t(ctypes.Structure):
                 ('type', ctypes.c_int),
                 ('len', ctypes.c_int),
                 ('v1', _bcf_info_t_v1_member),
-                ('vptr', ctypes.c_uint8),
+                ('vptr', ctypes.POINTER(ctypes.c_uint8)),
                 ('vptr_len', ctypes.c_uint32),
                 ('vptr_off', ctypes.c_uint32, 31),
                 ('vptr_free', ctypes.c_uint32, 1)]
@@ -376,13 +377,16 @@ _bcf_alt_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
 _bcf_read = htslib.bcf_read
 _bcf_read.restype = ctypes.c_int
 
+def _bcf_read1(fp, h, v):
+    return _bcf_read(fp, h, v)
+
 _bcf_hdr_get_version = htslib.bcf_hdr_get_version
 _bcf_hdr_get_version.restype = ctypes.c_char_p
 
 
 def _bcf_itr_next(htsfp, itr, r):
     """Replacement for C macro ``bcf_itr_next``."""
-    _hts_itr_next(htsfp[0].fp.bgzf, itr, r, 0)
+    return _hts_itr_next(htsfp[0].fp.bgzf, itr, r, 0)
 
 
 _bcf_init = htslib.bcf_init

@@ -80,7 +80,7 @@ def test_two_hundread_through_index_vcf_gz(
         assert len(list(idx.query('chr17:10,000,000-11,000,000'))) == 2
 
 
-def test_two_hundread_through_index_bcf(two_hundred_bcf, two_hundred_bai):
+def test_two_hundread_through_index_bcf(two_hundred_bcf, two_hundred_csi):
     with bcf.BCFIndex(str(two_hundred_bcf)) as idx:
         assert len(list(idx.query('chr17:10,000,000-11,000,000'))) == 2
         assert len(list(idx.query('chr17:10,000,000-15,000,000'))) == 12

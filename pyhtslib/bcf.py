@@ -239,6 +239,8 @@ class BCFHeader:
         self.sample_names = []
         #: list of ``BCFHeaderTargetInfo``s, defaulting to ``[]``
         self.target_infos = []
+        #: list of ids
+        self.ids = []
         #: mapping of string key to numeric id, defaulting to ``{}``
         self.key_ids = {}
         #: list of BCFHeaderRecord objects, defaulting to ``[]``
@@ -308,10 +310,9 @@ class BCFHeader:
             for i in range(num_samples)]
         # get mapping from FILTER/INFO/FORMAT key to numeric id
         num_ids = _bcf_hdr_nids(self.struct_ptr)
-        key_to_id = [
+        self.ids = [
             _bcf_hdr_int2id(self.struct_ptr, _BCF_DT_ID, i).decode('utf-8')
             for i in range(num_ids)]
-        self.key_ids = dict([(key, i) for i, key in enumerate(key_to_id)])
         # parse out headers
         self._parse_headers_from_struct()
         # create self.target_infos
@@ -339,17 +340,168 @@ class BCFHeader:
             self.add_header_record(DIR[rec.type]._from_struct(rec))
 
 
+class BCFGenotype:
+    """Representation of a genotype in a BCF/VCF record"""
+
+
+class _BCFTypedInfoFieldConverter:
+    # TODO(holtgrew): interpret as scalar if count is 1
+
+    def __init__(self, header, info, struct, key):
+        self.header = header
+        self.info = info
+        self.struct = struct
+        self.key = key
+
+    def __call__(self):
+        # ignore any values if the header says that there are none; otherwise
+        # we can get problems with things like "SNP=true"
+        num = _bcf_hdr_id2int(self.header.struct_ptr, _BCF_DT_ID,
+                              self.key.encode('utf-8'))
+        length = _bcf_hdr_id2length(self.header.struct_ptr, _BCF_HL_INFO, num)
+        number = _bcf_hdr_id2number(self.header.struct_ptr, _BCF_HL_INFO, num)
+        type_ = _bcf_hdr_id2type(self.header.struct_ptr, _BCF_HL_INFO, num)
+        if length == _BCF_VL_FIXED and number == 0:
+            return self.convert_flag()
+
+        # branch based on the type of the info field
+        BRANCH = {
+            _BCF_BT_NULL: self.convert_flag,
+            _BCF_BT_INT8: self.convert_int,
+            _BCF_BT_INT16: self.convert_int,
+            _BCF_BT_INT32: self.convert_int,
+            _BCF_BT_FLOAT: self.convert_float,
+            _BCF_BT_CHAR: self.convert_char,
+        }
+        result = BRANCH[self.info.type]()
+
+        # extract single value in case of scalars and split strings at comma
+        # in case of vectors
+        is_scalar = (length == _BCF_VL_FIXED and number == 1)
+        if type_ == _BCF_HT_STR:
+            return result if is_scalar else result.split(',')
+        elif is_scalar:
+            assert len(result) == 1, 'len(result) == {}'.format(len(result))
+            return collections.OrderedDict(result[0])
+        else:
+            return collections.OrderedDict(result)
+
+    def convert_flag(self):
+        ndst = ctypes.c_int(0)
+        dst = ctypes.c_char_p()
+        res = _bcf_get_info_flag(
+            self.header.struct_ptr, ctypes.byref(self.struct),
+            self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
+        return (res == 1)
+
+    def convert_int(self):
+        ndst = ctypes.c_int(0)
+        dst = ctypes.POINTER(ctypes.c_int32)()
+        res = _bcf_get_info_int32(
+            self.header.struct_ptr, ctypes.byref(self.struct),
+            self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
+        if res < 0:
+            raise BCFInfoFieldException(res, self.key, 'int32')
+        return [dst[i] for i in range(ndst.value)]
+
+    def convert_float(self):
+        ndst = ctypes.c_int(0)
+        dst = ctypes.POINTER(ctypes.c_float)()
+        res = _bcf_get_info_float(
+            self.header.struct_ptr, ctypes.byref(self.struct),
+            self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
+        if res < 0:
+            raise BCFInfoFieldException(res, self.key, 'float')
+        return [dst[i] for i in range(ndst.value)]
+
+    def convert_char(self):
+        ndst = ctypes.c_int(0)
+        dst = ctypes.c_char_p()
+        res = _bcf_get_info_string(
+            self.header.struct_ptr, ctypes.byref(self.struct),
+            self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
+        if res < 0:
+            raise BCFInfoFieldException(res, self.key, 'string')
+        return dst.value.decode('utf-8')
+
+
 class BCFRecordImpl:
     """Information extracted from C internals of ``BCFRecord``"""
 
     @staticmethod
-    def from_struct(ptr, header):
-        # TODO(holtgrewe): write me!
-        return BCFRecordImpl(ptr, header)
+    def from_struct(struct, header):
+        """Return ``BCFRecordImpl`` from internal C structure"""
+        r_id = struct.rid
+        print('r_id={} ({})'.format(r_id, type(r_id)))
+        chrom = header.target_infos[r_id].name
+        print('chrom={} ({})'.format(chrom, type(chrom)))
+        begin_pos = struct.pos
+        print('begin_pos={} ({})'.format(begin_pos, type(begin_pos)))
+        end_pos = struct.pos + struct.rlen
+        print('end_pos={} ({})'.format(end_pos, type(end_pos)))
+        tmp_id = struct.d.id
+        print('tmp_id={} ({})'.format(tmp_id, type(tmp_id)))
+        ids = struct.d.id.decode('utf-8').split(';')
+        print('ids={} ({})'.format(ids, type(ids)))
+        ref = struct.d.allele[0].decode('utf-8')
+        print('ref={} ({})'.format(ref, type(ref)))
+        alts = [struct.d.allele[i].decode('utf-8')
+                for i in range(1, struct.n_allele)]
+        print('alts={} ({})'.format(alts, type(alts)))
+        qual = struct.qual
+        print('qual={} ({})'.format(qual, type(qual)))
+        filters = [header.ids[i] for i in range(struct.d.n_flt)]
+        print('filters={} ({})'.format(filters, type(filters)))
+        info = BCFRecordImpl._build_info_field(struct, header)
+        print('info={} ({})'.format(info, type(info)))
+        format_ = None
+        print('format_={} ({})'.format(format_, type(format_)))
+        genotypes = None
+        print('genotypes={} ({})'.format(genotypes, type(genotypes)))
 
-    def __init__(self, *args, **kwargs):
-        # TODO(holtgrewe): write me!
-        pass
+        return BCFRecordImpl(r_id, chrom, begin_pos, end_pos, ids, ref,
+                             alts, qual, filters, info, format_, genotypes)
+
+    def _build_info_field(struct, header):
+        """Return INFO column entries."""
+        result = []
+        for i in range(struct.n_info):
+            info = struct.d.info[i]
+            key_str = header.ids[info.key]
+            converter = _BCFTypedInfoFieldConverter(
+                header, info, struct, key_str)
+            result.append((key_str, converter()))
+        return result
+
+    def __init__(self, r_id, chrom, begin_pos, end_pos, ids, ref, alts,
+                 qual, filters, info, format_, genotypes):
+        #: target sequence id of variant (cmp. CHROM)
+        self.r_id = r_id
+        #: target sequence name (cmp. CHROM)
+        self.chrom = chrom
+        #: begin position of the variant in the reference (POS)
+        self.begin_pos = begin_pos
+        #: end position of the variant in the reference (POS)
+        self.end_pos = end_pos
+        #: list of uniq ids of the (e.g. dbSNP or COSMIC, cmp. ID), split at
+        #: ``';'``
+        self.ids = list(ids)
+        #: reference sequence (REF)
+        self.ref = ref
+        #: alternative alleles, split at ``','``
+        self.alts = list(alts)
+        #: list of all alleles
+        self.alleles = [self.ref] + self.alts
+        #: alignment quality
+        self.qual = qual
+        #: filter entries, split at ``';'``
+        self.filters = list(filters)
+        #: ``OrdereDictionary`` with values from the INFO column
+        self.info = info
+        #: list of ids for FORMAT column
+        self.format = format_
+        #: list of ``BCFGenotype``, one for each genotype
+        self.genotypes = genotypes
 
 
 class BCFRecord:
@@ -393,7 +545,8 @@ class BCFRecord:
             raise AttributeError('self.impl is None and cannot rebuild from '
                                  'None self.struct')
         elif not self.impl and self.struct:
-            self.impl = BCFRecordImpl.from_struct(self.struct_ptr, self.header)
+            self.impl = BCFRecordImpl.from_struct(
+                self.struct_ptr[0], self.header)
         return getattr(self.impl, name)
 
 
@@ -421,6 +574,8 @@ class BCFFileIter:
         r = read(self.bcf_file.struct_ptr, self.bcf_file.header.struct_ptr,
                  self.struct_ptr)
         if r >= 0:
+            r = _bcf_unpack(self.struct_ptr, _BCF_UN_ALL)
+            # TODO(holtgrewe): check r from unpack?
             # successfully read record from file
             self.record._reset()
             return self.record

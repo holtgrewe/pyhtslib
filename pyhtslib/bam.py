@@ -245,41 +245,27 @@ class BAMRecordImpl:
     def from_struct(ptr, header):
         """Return ``BAMRecordImpl`` from internal C structure"""
         qname = _bam_get_qname(ptr).value.decode('utf-8')
-        # print('QNAME={} ({})'.format(qname, type(qname)))
         flag = ptr[0].core.flag
-        # print('FLAG={} ({})'.format(flag, type(flag)))
         tid = ptr[0].core.tid
-        # print('TID={} ({})'.format(tid, type(tid)))
         ref = header.target_infos[ptr[0].core.tid].name
-        # print('REF={} ({})'.format(ref, type(ref)))
         pos = ptr[0].core.pos
-        # print('POS={} ({})'.format(pos, type(pos)))
         end_pos = _bam_endpos(ptr)
-        # print('END_POS={} ({})'.format(end_pos, type(end_pos)))
         mapq = ptr[0].core.qual
-        # print('QUAL={} ({})'.format(qual, type(qual)))
         cigar = BAMRecordImpl._cigar(ptr)
-        # print('CIGAR={} ({})'.format(cigar, type(cigar)))
         mtid = ptr[0].core.mtid
-        # print('MATE TID={} ({})'.format(mtid, type(mtid)))
         mref = header.target_infos[ptr[0].core.mtid].name
-        # print('MATE REF={} ({})'.format(mref, type(mref)))
         mpos = ptr[0].core.mpos
-        # print('MPOS={} ({})'.format(mpos, type(mpos)))
         isize = ptr[0].core.isize
-        # print('ISIZE={} ({})'.format(isize, type(isize)))
         _l_qseq = ptr[0].core.l_qseq
         _seq_ptr = ctypes.cast(_bam_get_seq(ptr),
                                ctypes.POINTER(ctypes.c_uint8))
         seq = ''.join([_BAM_SEQ_STR[_bam_seqi(_seq_ptr, i)]
                        for i in range(_l_qseq)])
-        # print('SEQ={} ({})'.format(seq, type(seq)))
         _qual_ptr = _bam_get_qual(ptr)
         qual = ''.join([chr(ord('!') + _qual_ptr[i]) for i in range(_l_qseq)])
-        # print('QUAL={} ({})'.format(qual, type(qual)), file=sys.stderr)
         # TODO(holtgrewe): make parsing of tags lazy
         tags = BAMAuxTagParser(ptr, _bam_get_aux(ptr), _bam_get_l_aux(ptr))()
-        # print('TAGS={} ({})'.format(tags, type(tags)))
+
         return BAMRecordImpl(qname, flag, tid, ref, pos, end_pos, mapq, cigar,
                              mtid, mref, mpos, isize, seq, qual, tags)
 
