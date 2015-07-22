@@ -56,7 +56,8 @@ class BCFGenericHeaderRecord:
     @staticmethod
     def _from_struct(struct):
         """Construct BCFGenericHeaderRecord from ``_bcf_hrec_t``"""
-        return BCFGenericHeaderRecord(struct.key, struct.value)
+        return BCFGenericHeaderRecord(struct.key.decode('utf-8'),
+                                      struct.value.decode('utf-8'))
 
     def __init__(self, tag, value):
         #: tag of the generic record
@@ -141,7 +142,7 @@ class BCFFilterHeaderRecord(BCFStructuredHeaderRecord):
 
     @staticmethod
     def _from_struct(struct):
-        return BCFStructuredHeaderRecord._from_struct_impl(
+        return BCFFilterHeaderRecord._from_struct_impl(
             BCFFilterHeaderRecord, ['id', 'description'], struct,
             ['description'])
 
@@ -158,7 +159,7 @@ class BCFInfoHeaderRecord(BCFStructuredHeaderRecord):
 
     @staticmethod
     def _from_struct(struct):
-        return BCFStructuredHeaderRecord._from_struct_impl(
+        return BCFInfoHeaderRecord._from_struct_impl(
             BCFInfoHeaderRecord, ['id', 'number', 'type', 'description'],
             struct, ['description'])
 
@@ -176,7 +177,7 @@ class BCFFormatHeaderRecord(BCFStructuredHeaderRecord):
 
     @staticmethod
     def _from_struct(struct):
-        return BCFStructuredHeaderRecord._from_struct_impl(
+        return BCFFormatHeaderRecord._from_struct_impl(
             BCFFormatHeaderRecord, ['id', 'number', 'type', 'description'],
             struct, ['description'])
 
@@ -195,8 +196,8 @@ class BCFContigHeaderRecord(BCFStructuredHeaderRecord):
     @staticmethod
     def _from_struct(struct):
         return BCFContigHeaderRecord._from_struct_impl(
-            BCFFormatHeaderRecord, ['id', 'length'],
-            struct, ['description'] + repr_entries)
+            BCFContigHeaderRecord, ['id', 'length'],
+            struct, ['description'])
 
     def __init__(self, tag, id_, length, other_entries=[], repr_entries=[]):
         BCFStructuredHeaderRecord.__init__(
@@ -264,7 +265,7 @@ class BCFHeader:
                 'INFO': self.id_to_info_record,
                 'FORMAT': self.id_to_format_record,
             }
-            DICT[record.tag][record.tag] = record
+            DICT[record.tag][record.entries['id']] = record
         elif record.tag == 'contig':
             self.target_infos.append(BCFHeaderTargetInfo(
                 record.entries['id'], record.entries['length']))
@@ -317,12 +318,6 @@ class BCFHeader:
             ctg = self.id_to_contig_record.get(seq_name)
             if not ctg:
                 self.target_infos.append(BCFHeaderTargetInfo(seq_name, 0))
-            else:
-                # use case insensitive keys
-                keys = dict([(k.lower(), k) for k in ctg.entries.keys()])
-                key = keys['length']
-                self.target_infos.append(
-                    BCFHeaderTargetInfo(seq_name, ctg.entries[key]))
 
     def _parse_headers_from_struct(self):
         """Fill the header member fields from ``self.struct_ptr``

@@ -136,6 +136,7 @@ __all__ = [
     '_bcf_hdr_nsequences',
     '_bcf_hdr_nsamples',
     '_bcf_hdr_get_sample_name',
+    '_bcf_hdr_destroy',
     '_bcf_rec_nalleles',
     '_bcf_init1',
     '_bcf_itr_querys',
@@ -388,6 +389,9 @@ _bcf_hdr_seqnames.restype = ctypes.POINTER(ctypes.c_char_p)
 
 _bcf_hdr_id2int = htslib.bcf_hdr_id2int
 _bcf_hdr_id2int.restype = ctypes.c_int
+
+_bcf_hdr_destroy = htslib.bcf_hdr_destroy
+_bcf_hdr_destroy.restype = None
 
 
 def _bcf_hdr_id2length(hdr, type_, int_id):

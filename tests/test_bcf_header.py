@@ -17,18 +17,28 @@ __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 # ---------------------------------------------------------------------------
 
 
-def check_header_of_header_only_vcf(header):
+def check_header_of_header_only_vcf(header, line_add=0):
+    # conversion to BCF appends two header lines
     assert header.struct_ptr
     assert header.struct
-    assert header.target_infos == [
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_I', 1009800),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_II', 5000),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_III', 5000),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_IV', 5000),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_V', 5000),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_X', 5000),
-        bcf.BCFHeaderTargetInfo('CHROMOSOME_MtDNA', 5000)]
-    assert header.header_records == []
+    assert header.vcf_version == 'VCFv4.2'
+    assert header.sample_names == ['sample_normal_wes', 'sample_tumor_wes']
+    assert len(header.target_infos) == 85
+    assert header.target_infos[0] == bcf.BCFHeaderTargetInfo('1', 249250621)
+    assert header.target_infos[-1] == \
+        bcf.BCFHeaderTargetInfo('NC_007605', 171823)
+    assert header.key_ids == \
+        {'AD': 2, 'BQ': 3, 'DB': 10, 'DP': 4, 'FA': 5, 'FILTER': 14,
+         'FORMAT': 15, 'GQ': 6, 'GT': 7, 'INFO': 16, 'MQ0': 11, 'PASS': 0,
+         'PL': 8, 'REJECT': 1, 'SOMATIC': 12, 'SS': 9, 'VT': 13}
+    assert len(header.header_records) == 101 + line_add
+    assert set(header.id_to_filter_record.keys()) == set(['PASS', 'REJECT'])
+    assert set(header.id_to_info_record.keys()) == \
+        set(['DB', 'MQ0', 'SOMATIC', 'VT'])
+    assert set(header.id_to_format_record) == \
+        set(['AD', 'BQ', 'DP', 'FA', 'GQ', 'GT', 'PL', 'SS'])
+    assert len(header.id_to_contig_record) == 85
+
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -154,18 +164,15 @@ def test_bcf_record_construct_small():
 
 
 def test_read_header_from_vcf(header_only_vcf):
-    return
     with bcf.BCFFile(str(header_only_vcf)) as f:
         check_header_of_header_only_vcf(f.header)
 
 
 def test_read_header_from_vcf_gz(header_only_vcf_gz):
-    return
     with bcf.BCFFile(str(header_only_vcf_gz)) as f:
         check_header_of_header_only_vcf(f.header)
 
 
 def test_read_header_from_bcf(header_only_bcf):
-    return
     with bcf.BCFFile(str(header_only_bcf)) as f:
-        check_header_of_header_only_vcf(f.header)
+        check_header_of_header_only_vcf(f.header, 2)
