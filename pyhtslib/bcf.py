@@ -2,10 +2,7 @@
 """Access to BCF and BCF files"""
 
 import collections
-# import ctypes  # TODO(holtgrew): remove?
-# import logging
-# import os
-# import os.path
+import ctypes  # TODO(holtgrew): remove?
 
 from pyhtslib.hts_internal import *  # NOQA
 from pyhtslib.bcf_internal import *  # NOQA
@@ -56,18 +53,60 @@ class BCFHeaderTargetInfo:
 class BCFGenericHeaderRecord:
     """Generic BCF header record with any content"""
 
+    @staticmethod
+    def _from_struct(struct):
+        """Construct BCFGenericHeaderRecord from ``_bcf_hrec_t``"""
+        return BCFGenericHeaderRecord(struct.key, struct.value)
+
     def __init__(self, tag, value):
         #: tag of the generic record
-        self.tag = key
+        self.tag = tag
         #: value of the generic record
         self.value = value
 
+    def __eq__(self, other):
+        return (self.tag == other.tag and self.value == other.value)
+
     def to_header_line(self):
-        return '##{}={}'.format(self.key, self.value)
+        return '##{}={}'.format(self.tag, self.value)
 
 
 class BCFStructuredHeaderRecord(BCFGenericHeaderRecord):
     """Structured BCF header record (``TAG=<A=...,B=...>``)"""
+
+    @staticmethod
+    def _from_struct_impl(klass, required, struct, repr_entries):
+        """Construct klass object from ``_bcf_hrec_t``
+
+        Used by subtypes only
+        """
+        tag = struct.key.decode('utf-8')
+        entries = dict([(struct.keys[i].decode('utf-8'),
+                         struct.vals[i].decode('utf-8'))
+                        for i in range(struct.nkeys)])
+        keys = dict([(k.lower(), k) for k in entries.keys()])
+        for key in required:
+            if not keys.get(key):
+                tpl = ('FILTER record does not have entry for {} column (case '
+                       'insensitive lookup) ')
+                raise BCFFileException(tpl.format(key.upper()))
+        required_list = [entries[keys[k]] for k in required]
+        other_list = [(struct.keys[i].decode('utf-8'),
+                       struct.vals[i].decode('utf-8'))
+                      for i in range(struct.nkeys)
+                      if struct.keys[i].decode('utf-').lower()
+                      not in required]
+        tpl = 'tag={}, required_list={}, other_entries={}, repr_entries={}'
+        return klass(tag, *required_list, other_entries=other_list,
+                     repr_entries=repr_entries)
+
+    @staticmethod
+    def _from_struct(struct):
+        """Construct BCFStructuredHeaderRecord from ``_bcf_hrec_t``"""
+        tag = struct.key
+        entries = [(struct.keys[i], struct.vals[i])
+                   for i in range(struct.nkeys)]
+        return BCFStructuredHeaderRecord(tag, entries)
 
     def __init__(self, tag, entries=[], repr_entries=[]):
         #: ``str`` with tag name
@@ -78,17 +117,21 @@ class BCFStructuredHeaderRecord(BCFGenericHeaderRecord):
         # plain string conversion
         self.repr_entries = set(repr_entries)
 
+    def __eq__(self, other):
+        return (self.tag == other.tag and self.entries == other.entries and
+                self.repr_entries == other.repr_entries)
+
     def to_header_line(self):
         def hdr_repr(key, val):
             """Representation of ``val`` in BCF header line"""
             if key not in self.repr_entries:
                 return str(val)
             elif hasattr(val, 'encode'):
-                return val.encode('string_escape').replace('"', r'\"')
+                return '"{}"'.format(val.replace('"', r'\"'))
             else:
                 return repr(val)
 
-        tuple_ = ','.join(['{}={}'.format(k, hdr_repr(key, v))
+        tuple_ = ','.join(['{}={}'.format(k, hdr_repr(k, v))
                            for k, v in self.entries.items() if v])
         return '##{tag}=<{tuple_}>'.format(tag=self.tag, tuple_=tuple_)
 
@@ -96,42 +139,70 @@ class BCFStructuredHeaderRecord(BCFGenericHeaderRecord):
 class BCFFilterHeaderRecord(BCFStructuredHeaderRecord):
     """BCF header record describing FILTER values"""
 
-    def __init__(self, id_, description):
+    @staticmethod
+    def _from_struct(struct):
+        return BCFStructuredHeaderRecord._from_struct_impl(
+            BCFFilterHeaderRecord, ['id', 'description'], struct,
+            ['description'])
+
+    def __init__(self, tag, id_, description, other_entries=[],
+                 repr_entries=[]):
         BCFStructuredHeaderRecord.__init__(
-            self, 'FILTER', [('ID', id_), ('Description', description)],
-            ['Description'])
+            self, 'FILTER',
+            [('id', id_), ('description', description)] + list(other_entries),
+            ['description'] + repr_entries)
 
 
 class BCFInfoHeaderRecord(BCFStructuredHeaderRecord):
     """BCF header record describing INFO values"""
 
-    def __init__(self, id_, number, type_, description):
+    @staticmethod
+    def _from_struct(struct):
+        return BCFStructuredHeaderRecord._from_struct_impl(
+            BCFInfoHeaderRecord, ['id', 'number', 'type', 'description'],
+            struct, ['description'])
+
+    def __init__(self, tag, id_, number, type_, description, other_entries=[],
+                 repr_entries=[]):
         BCFStructuredHeaderRecord.__init__(
             self, 'INFO',
-            [('ID', id_), ('Number', number), ('Type', type_),
-             ('Description', description)],
-            ['Description'])
+            [('id', id_), ('number', number), ('type', type_),
+             ('description', description)] + list(other_entries),
+            ['description'] + repr_entries)
 
 
 class BCFFormatHeaderRecord(BCFStructuredHeaderRecord):
     """BCF header record describing FORMAT values"""
 
-    def __init__(self, id_, number, type_, description):
+    @staticmethod
+    def _from_struct(struct):
+        return BCFStructuredHeaderRecord._from_struct_impl(
+            BCFFormatHeaderRecord, ['id', 'number', 'type', 'description'],
+            struct, ['description'])
+
+    def __init__(self, tag, id_, number, type_, description, other_entries=[],
+                 repr_entries=[]):
         BCFStructuredHeaderRecord.__init__(
             self, 'FORMAT',
-            [('ID', id_), ('Number', number), ('Type', type_),
-             ('Description', description)],
-            ['Description'])
+            [('id', id_), ('number', number), ('type', type_),
+             ('description', description)] + list(other_entries),
+            ['description'] + repr_entries)
 
 
 class BCFContigHeaderRecord(BCFStructuredHeaderRecord):
     """BCF header record describing a contig line"""
 
-    def __init__(self, id_, length, other_entries=[], escape_args=[]):
+    @staticmethod
+    def _from_struct(struct):
+        return BCFContigHeaderRecord._from_struct_impl(
+            BCFFormatHeaderRecord, ['id', 'length'],
+            struct, ['description'] + repr_entries)
+
+    def __init__(self, tag, id_, length, other_entries=[], repr_entries=[]):
         BCFStructuredHeaderRecord.__init__(
             self, 'contig',
-            [('ID', id_), ('Length', int(length))] + other_entries,
-            escape_args)
+            [('id', id_), ('length', int(length))] + list(other_entries),
+            repr_entries)
 
 
 class BCFHeader:
@@ -144,6 +215,10 @@ class BCFHeader:
     @staticmethod
     def _read_from_file(file_ptr):
         """Read header from BCF file handle"""
+        ptr = _bcf_hdr_read(file_ptr)
+        if not ptr:
+            raise BCFFileException('Could not load BCF header from file!')
+        return BCFHeader(ptr)
 
     def __init__(self, struct_ptr=None):
         """Initialize object from pointer to htslib BCF header type
@@ -158,8 +233,8 @@ class BCFHeader:
 
         #: VCF version, defaulting to ``"VCFv4.2"``
         self.vcf_version = "VCFv4.2"
-        #: list of strings with sample IDs, defaulting to ``[]``
-        self.sample_ids = []
+        #: list of strings with sample names, defaulting to ``[]``
+        self.sample_names = []
         #: list of ``BCFHeaderTargetInfo``s, defaulting to ``[]``
         self.target_infos = []
         #: mapping of string key to numeric id, defaulting to ``{}``
@@ -182,12 +257,19 @@ class BCFHeader:
 
         Also updates ``self.id_to_*`` fields appropriately.
         """
-        if record.key in ['FILTER', 'INFO', 'FORMAT']:
-            self.key_ids.setdefault(self.record.tag, len(self.header.key_ids))
-        elif self.header.key == 'contig':
+        if record.tag in ['FILTER', 'INFO', 'FORMAT']:
+            self.key_ids.setdefault(record.tag, len(self.key_ids))
+            DICT = {
+                'FILTER': self.id_to_filter_record,
+                'INFO': self.id_to_info_record,
+                'FORMAT': self.id_to_format_record,
+            }
+            DICT[record.tag][record.tag] = record
+        elif record.tag == 'contig':
             self.target_infos.append(BCFHeaderTargetInfo(
-                record.entries['ID'], record.entries['Length']))
-        self.header_records.append(self.record)
+                record.entries['id'], record.entries['length']))
+            self.id_to_contig_record[record.entries['id']] = record
+        self.header_records.append(record)
 
     def free(self):
         """Free all memory associated with this object"""
@@ -196,21 +278,78 @@ class BCFHeader:
             self.struct_ptr = None
             self.struct = None
 
+    def to_vcf_header(self):
+        """Return multi-line string with VCF header representation"""
+        lines = [BCFGenericHeaderRecord('fileformat', self.vcf_version)]
+        for r in self.header_records:
+            if r.tag == 'fileformat':
+                lines = []
+        for r in self.header_records:
+            lines.append(r)
+        return '\n'.join([l.to_header_line() for l in lines] + [''])
+
     def _fill_from_struct(self):
         """Fill object with the information from ``self.struct_ptr``, if any
         """
         if not self.struct_ptr:
             return
-        raise Exception('Implement me!')
+        # get sequence names, lengths will be parsed from the headers below
+        num_seqs = ctypes.c_int(0)
+        arr_ptr = _bcf_hdr_seqnames(self.struct_ptr, ctypes.byref(num_seqs))
+        num_seqs = num_seqs.value
+        seq_names = [arr_ptr[i].decode('utf-8') for i in range(num_seqs)]
+        _libc.free(arr_ptr)
+        # get sample names
+        num_samples = _bcf_hdr_nsamples(self.struct_ptr)
+        self.sample_names = [
+            _bcf_hdr_get_sample_name(self.struct_ptr, i).decode('utf-8')
+            for i in range(num_samples)]
+        # get mapping from FILTER/INFO/FORMAT key to numeric id
+        num_ids = _bcf_hdr_nids(self.struct_ptr)
+        key_to_id = [
+            _bcf_hdr_int2id(self.struct_ptr, _BCF_DT_ID, i).decode('utf-8')
+            for i in range(num_ids)]
+        self.key_ids = dict([(key, i) for i, key in enumerate(key_to_id)])
+        # parse out headers
+        self._parse_headers_from_struct()
+        # create self.target_infos
+        for seq_name in seq_names:
+            ctg = self.id_to_contig_record.get(seq_name)
+            if not ctg:
+                self.target_infos.append(BCFHeaderTargetInfo(seq_name, 0))
+            else:
+                # use case insensitive keys
+                keys = dict([(k.lower(), k) for k in ctg.entries.keys()])
+                key = keys['length']
+                self.target_infos.append(
+                    BCFHeaderTargetInfo(seq_name, ctg.entries[key]))
+
+    def _parse_headers_from_struct(self):
+        """Fill the header member fields from ``self.struct_ptr``
+
+        ``self.struct_ptr`` must not be ``None``.
+        """
+        # mapping of bcf header record id to BCFGenericHeaderRecord subclass
+        DIR = {
+            _BCF_HL_FLT: BCFFilterHeaderRecord,
+            _BCF_HL_INFO: BCFInfoHeaderRecord,
+            _BCF_HL_FMT: BCFFormatHeaderRecord,
+            _BCF_HL_CTG: BCFContigHeaderRecord,
+            _BCF_HL_STR: BCFStructuredHeaderRecord,
+            _BCF_HL_GEN: BCFGenericHeaderRecord,
+        }
+        for i in range(self.struct.nhrec):
+            rec = self.struct.hrec[i][0]  # bcf_hrec_t
+            self.add_header_record(DIR[rec.type]._from_struct(rec))
 
 
-class BAMRecordImpl:
-    """Information extracted from C internals of ``BAMRecord``"""
+class BCFRecordImpl:
+    """Information extracted from C internals of ``BCFRecord``"""
 
     @staticmethod
     def from_struct(ptr, header):
         # TODO(holtgrewe): write me!
-        return BAMRecord(ptr, header)
+        return BCFRecord(ptr, header)
 
     def __init__(self, *args, **kwargs):
         # TODO(holtgrewe): write me!

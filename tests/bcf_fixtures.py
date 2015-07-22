@@ -77,5 +77,3 @@ def header_only_csi(tmpdir):
     src.copy(dst)
     yield dst
     dst.remove()
-
-

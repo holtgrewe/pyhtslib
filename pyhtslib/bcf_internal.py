@@ -31,6 +31,10 @@ __all__ = [
     '_BCF_VL_G',
     '_BCF_VL_R',
 
+    '_BCF_DT_ID',
+    '_BCF_DT_CTG',
+    '_BCF_DT_SAMPLE',
+
     '_UNKNOWN_CATEGORY',
     '_SEQUENCE_DATA',
     '_VARIANT_DATA',
@@ -107,6 +111,7 @@ __all__ = [
     '_bcf1_t',
     '_bcf_hdr_name2id',
     '_bcf_readrec',
+    '_bcf_hdr_read',
     '_bcf_alt_hdr_read',
     '_bcf_read',
     '_bcf_hdr_get_version',
@@ -158,6 +163,10 @@ _BCF_VL_VAR = 1
 _BCF_VL_A = 2
 _BCF_VL_G = 3
 _BCF_VL_R = 4
+
+_BCF_DT_ID = 0  # dictionary type
+_BCF_DT_CTG = 1
+_BCF_DT_SAMPLE = 2
 
 _UNKNOWN_CATEGORY = 0
 _SEQUENCE_DATA = 1
@@ -250,7 +259,7 @@ class _bcf_idpair_t(ctypes.Structure):
 class _bcf_hdr_t(ctypes.Structure):
 
     _fields_ = [('n', ctypes.c_int32 * 3),
-                ('id', _bcf_idpair_t),
+                ('id', ctypes.POINTER(_bcf_idpair_t) * 3),
                 ('dict', ctypes.c_void_p * 3),
                 ('samples', ctypes.POINTER(ctypes.c_char_p)),
                 ('hrec', ctypes.POINTER(ctypes.POINTER(_bcf_hrec_t))),
@@ -351,6 +360,9 @@ _bcf_hdr_name2id.restype = ctypes.c_int
 
 _bcf_readrec = htslib.bcf_readrec
 _bcf_readrec.restype = ctypes.c_int
+
+_bcf_hdr_read = htslib.bcf_hdr_read
+_bcf_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
 
 # our extension, from vt
 _bcf_alt_hdr_read = htslib.bcf_alt_hdr_read
