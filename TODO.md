@@ -6,7 +6,6 @@
 * convert to Cython
 * support for Python 2
 * lazy loading of INFO and genotypes in BCFRecord
-* remove memory leaks
 * build function for BCFIndex and BAMIndex
 * wrapping of bcf\_synced\_reader
 * functionality for pileup
