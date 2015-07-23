@@ -109,10 +109,9 @@ __all__ = [
     '_bcf_info_t',
     '_bcf_dec_t',
     '_bcf1_t',
-    '_bcf_hdr_name2id',
     '_bcf_readrec',
     '_bcf_hdr_read',
-    '_bcf_alt_hdr_read',
+    '_bcf_hdr_name2id',
     '_bcf_read',
     '_bcf_read1',
     '_bcf_hdr_get_version',
@@ -384,18 +383,15 @@ class _bcf1_t(ctypes.Structure):
 htslib = pl.load_htslib()
 
 # put into .so by us, was static inline
-_bcf_hdr_name2id = htslib.pyhtslib_bcf_hdr_name2id
-_bcf_hdr_name2id.restype = ctypes.c_int
-
 _bcf_readrec = htslib.bcf_readrec
 _bcf_readrec.restype = ctypes.c_int
 
 _bcf_hdr_read = htslib.bcf_hdr_read
 _bcf_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
 
-# our extension, from vt
-_bcf_alt_hdr_read = htslib.bcf_alt_hdr_read
-_bcf_alt_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
+# our addition, waiting for Cython to get rid of it
+_bcf_hdr_name2id = htslib._bcf_hdr_name2id
+_bcf_hdr_name2id.restype = ctypes.c_int
 
 _bcf_read = htslib.bcf_read
 _bcf_read.restype = ctypes.c_int

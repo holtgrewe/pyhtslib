@@ -1,21 +1,30 @@
+sudo: false
 language: python
 python:
-    - "3.2"
-    - "3.3"
-    - "3.4"
+- "3.2"
+- "3.3"
+- "3.4"
 
-# install dependencies
-#
-# - zlib1g-dev (dependency of htslib)
-# - htslib (from source)
+# cache installation of htslib
+cache:
+  directories:
+  - ${HOME}/htslib-1.2.1
+
+# install dependencies of htslib
+addons:
+  apt:
+    packages:
+    - zlib1g-dev
+
+# install htslib
 before_script:
-    - sudo apt-get install zlib1g-dev
-    - wget https://github.com/samtools/htslib/releases/download/1.2.1/htslib-1.2.1.tar.bz2 -O /tmp/htslib-1.2.1.tar.bz2
-    - tar -xjf /tmp/htslib-1.2.1.tar.bz2 && cd htslib-1.2.1 && make && sudo make install
+- bash .travis-scripts/install-htslib.sh
+- export HTSLIB_PATH=${HOME}/htslib-1.2.1/lib/libhts.so
+- nm -g ${HTSLIB_PATH}
 
 # command to install dependencies
 install:
-    - "pip install -r requirements.txt"
+- "pip install -r requirements.txt"
 
 # command to run tests:
 script: py.test
