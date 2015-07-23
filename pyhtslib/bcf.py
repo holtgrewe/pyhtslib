@@ -262,7 +262,7 @@ class BCFHeader:
         Also updates ``self.id_to_*`` fields appropriately.
         """
         if record.tag in ['FILTER', 'INFO', 'FORMAT']:
-            self.key_ids.setdefault(record.tag, len(self.key_ids))
+            self.key_ids.setdefault(record.entries['id'], len(self.key_ids))
             DICT = {
                 'FILTER': self.id_to_filter_record,
                 'INFO': self.id_to_info_record,
@@ -382,9 +382,9 @@ class _BCFTypedInfoFieldConverter:
             return result if is_scalar else result.split(',')
         elif is_scalar:
             assert len(result) == 1, 'len(result) == {}'.format(len(result))
-            return collections.OrderedDict(result[0])
+            return result[0]
         else:
-            return collections.OrderedDict(result)
+            return result
 
     def convert_flag(self):
         ndst = ctypes.c_int(0)
@@ -425,6 +425,225 @@ class _BCFTypedInfoFieldConverter:
         return dst.value.decode('utf-8')
 
 
+class GenotypeCall:
+    """Information about a genotype call"""
+
+    def __init__(self, allele_ids, is_phased, gt_info=None):
+        self.allele_ids = allele_ids
+        self.is_phased = is_phased
+        self.gt_info = gt_info
+        self._record_alleles_arr = None
+
+    @property
+    def _record_alleles(self):
+        if not self._record_alleles_arr:
+            if not self.gt_info:
+                return None
+            self._record_alleles = \
+                [self.gt_info.record_impl.ref] + self.gt_info.record_impl.alts
+        return self._record_alleles_arr
+
+    @property
+    def alleles(self):
+        return [self.gt_info._record_alleles[i] for i in self.allele_ids]
+
+    @property
+    def is_het(self):
+        return len(self.allele_ids) != 1
+
+    @property
+    def is_hom(self):
+        return len(set(self.allele_ids)) == 1
+
+    @property
+    def is_hom_ref(self):
+        return self.is_hom and 0 in self.allele_ids
+
+    @property
+    def is_hom_alt(self):
+        return self.is_hom and 0 not in self.allele_ids
+
+    @property
+    def is_het_alt(self):
+        return 0 not in self.alleles_ids
+
+    @property
+    def is_called(self):
+        return self.allele_ids and None not in self.allele_ids
+
+    @property
+    def is_nocall(self):
+        return not self.allele_ids or set(self.allele_ids) == set([None])
+
+    @property
+    def is_mixed(self):
+        return not self.is_called and not self.is_nocall
+
+    def __str__(self):
+        def to_str(x):
+            if x is None:
+                return '.'
+            elif self._record_alleles:
+                return self._record_alleles[x]
+            else:
+                return str(x)
+
+        sep = '|' if self.is_phased else '/'
+        val = sep.join(map(to_str, self.allele_ids))
+        return 'GenotypeCall({})'.format(repr(val))
+
+    def __repr__(self):
+        return 'GenotypeCall({}, is_phased={})'.format(
+            repr(self.allele_ids), repr(self.is_phased))
+
+
+class GenotypeInfo:
+    """Information given for each sample"""
+
+    def _build_from_struct(struct, header, sample_id):
+        """Construct ``GenotypeInfo`` for the i-th sample from ``record_impl``
+        """
+        fields = collections.OrderedDict()
+        for hdr_id, struct_id in [(struct.d.fmt[sample_id].id, i)
+                                  for i in range(struct.n_fmt)]:
+            format_key = header.ids[hdr_id]
+            enc_format_key = format_key.encode('utf-8')
+            if format_key == 'GT':
+                arr = ctypes.POINTER(ctypes.c_int32)()
+                narr = ctypes.c_int(0)
+                r = _bcf_get_genotypes(
+                    header.struct_ptr, ctypes.byref(struct),
+                    ctypes.byref(arr), ctypes.byref(narr))
+                if r < 0:
+                    continue  # skip, has no genotype
+                # TODO(holtgrewe): is the following too hacky?
+                is_phased = _bcf_gt_is_phased(arr[0])
+                allele_ids = [None if _bcf_gt_is_missing(arr[i])
+                              else _bcf_gt_allele(arr[i])
+                              for i in range(narr.value)]
+                fields[format_key] = [GenotypeCall(allele_ids, is_phased)]
+            elif struct.d.fmt[struct_id].type in [
+                    _BCF_BT_INT8, _BCF_BT_INT16, _BCF_BT_INT32]:
+                arr = ctypes.POINTER(ctypes.c_int32)()
+                narr = ctypes.c_int(0)
+                r = _bcf_get_format_int32(
+                    header.struct_ptr, ctypes.byref(struct), enc_format_key,
+                    ctypes.byref(arr), ctypes.byref(narr))
+                if r < 0:
+                    tpl = 'Problem when reading genotype field {}'
+                    raise BCFFileException(tpl.format(format_key))
+                fields[format_key] = [arr[i] for i in range(narr.value)]
+            elif struct.d.fmt[struct_id].type == _BCF_BT_FLOAT:
+                arr = ctypes.POINTER(ctypes.c_float)()
+                narr = ctypes.c_int(0)
+                r = _bcf_get_format_float(
+                    header.struct_ptr, ctypes.byref(struct), enc_format_key,
+                    ctypes.byref(arr), ctypes.byref(narr))
+                if r < 0:
+                    tpl = 'Problem when reading genotype field {}'
+                    raise BCFFileException(tpl.format(format_key))
+                fields[format_key] = [arr[i] for i in range(narr.value)]
+            elif struct.d.fmt[struct_id].type == _BCF_BT_CHAR:
+                arr = ctypes.POINTER(ctypes.c_uint8)()
+                narr = ctypes.c_int(0)
+                r = _bcf_get_format_char(
+                    header.struct_ptr, ctypes.byref(struct), enc_format_key,
+                    ctypes.byref(arr), ctypes.byref(narr))
+                if r < 0:
+                    tpl = 'Problem when reading genotype field {}'
+                    raise BCFFileException(tpl.format(format_key))
+                fields[format_key] = [chr(narr[i]) for i in range(narr.value)]
+            else:
+                tpl = 'Invalid FORMAT type {} for entry {}'
+                raise BCFFileException(tpl.format(
+                    struct.d.fmt[struct_id].type, format_key))
+
+            # extract scalar values from list
+            num = header.id_to_format_record[format_key].entries.get('number')
+            if num and str(num) == '1':
+                fields[format_key] = fields[format_key][0]
+
+        return GenotypeInfo(fields)
+
+    def __init__(self, fields, record_impl=None):
+        # link back to the ``BCFRecordInfo``, for ``BCFRecord`` and
+        # ``BCFHeader``
+        self.record_impl = record_impl
+        #: ``OrderedDict`` with field entries
+        self.fields = fields
+        if self.gt:
+            self.gt.gt_info = self
+
+    @property
+    def gt(self):
+        """Alias for ``self.fields['GT']``"""
+        return self.fields['GT']
+
+    @property
+    def dp(self):
+        """Alias for ``self.fields['DP']``"""
+        return self.fields['DP']
+
+    @property
+    def ft(self):
+        """Alias for ``self.fields['FT']``"""
+        return self.fields['FT']
+
+    @property
+    def gl(self):
+        """Alias for ``self.fields['GL']``"""
+        return self.fields['GL']
+
+    @property
+    def gle(self):
+        """Alias for ``self.fields['GLE']``"""
+        return self.fields['GLE']
+
+    @property
+    def pl(self):
+        """Alias for ``self.fields['PL']``"""
+        return self.fields['PL']
+
+    @property
+    def gp(self):
+        """Alias for ``self.fields['GP']``"""
+        return self.fields['GP']
+
+    @property
+    def gq(self):
+        """Alias for ``self.fields['GQ']``"""
+        return self.fields['GQ']
+
+    @property
+    def hq(self):
+        """Alias for ``self.fields['HQ']``"""
+        return self.fields['HQ']
+
+    @property
+    def ps(self):
+        """Alias for ``self.fields['PS']``"""
+        return self.fields['PS']
+
+    @property
+    def pq(self):
+        """Alias for ``self.fields['PQ']``"""
+        return self.fields['PQ']
+
+    @property
+    def ec(self):
+        """Alias for ``self.fields['EC']``"""
+        return self.fields['EC']
+
+    @property
+    def mq(self):
+        """Alias for ``self.fields['MQ']``"""
+        return self.fields['MQ']
+
+    def __repr__(self):
+        tpl = 'GenotypeInfo(fields={}, record_impl={})'
+        return tpl.format(self.fields, self.record_impl)
+
+
 class BCFRecordImpl:
     """Information extracted from C internals of ``BCFRecord``"""
 
@@ -432,35 +651,28 @@ class BCFRecordImpl:
     def from_struct(struct, header):
         """Return ``BCFRecordImpl`` from internal C structure"""
         r_id = struct.rid
-        print('r_id={} ({})'.format(r_id, type(r_id)))
         chrom = header.target_infos[r_id].name
-        print('chrom={} ({})'.format(chrom, type(chrom)))
         begin_pos = struct.pos
-        print('begin_pos={} ({})'.format(begin_pos, type(begin_pos)))
         end_pos = struct.pos + struct.rlen
-        print('end_pos={} ({})'.format(end_pos, type(end_pos)))
-        tmp_id = struct.d.id
-        print('tmp_id={} ({})'.format(tmp_id, type(tmp_id)))
         ids = struct.d.id.decode('utf-8').split(';')
-        print('ids={} ({})'.format(ids, type(ids)))
+        if ids == ['.']:
+            ids = []  # translate '.' to []
         ref = struct.d.allele[0].decode('utf-8')
-        print('ref={} ({})'.format(ref, type(ref)))
         alts = [struct.d.allele[i].decode('utf-8')
                 for i in range(1, struct.n_allele)]
-        print('alts={} ({})'.format(alts, type(alts)))
         qual = struct.qual
-        print('qual={} ({})'.format(qual, type(qual)))
         filters = [header.ids[i] for i in range(struct.d.n_flt)]
-        print('filters={} ({})'.format(filters, type(filters)))
         info = BCFRecordImpl._build_info_field(struct, header)
-        print('info={} ({})'.format(info, type(info)))
-        format_ = None
-        print('format_={} ({})'.format(format_, type(format_)))
-        genotypes = None
-        print('genotypes={} ({})'.format(genotypes, type(genotypes)))
+        format_ = [header.ids[struct.d.fmt[i].id]
+                   for i in range(struct.n_fmt)]
+        genotypes = [GenotypeInfo._build_from_struct(struct, header, i)
+                     for i in range(struct.n_sample)]
 
-        return BCFRecordImpl(r_id, chrom, begin_pos, end_pos, ids, ref,
-                             alts, qual, filters, info, format_, genotypes)
+        res = BCFRecordImpl(r_id, chrom, begin_pos, end_pos, ids, ref,
+                            alts, qual, filters, info, format_, genotypes)
+        for gt in genotypes:
+            gt.record_impl = res
+        return res
 
     def _build_info_field(struct, header):
         """Return INFO column entries."""
@@ -497,9 +709,9 @@ class BCFRecordImpl:
         #: filter entries, split at ``';'``
         self.filters = list(filters)
         #: ``OrdereDictionary`` with values from the INFO column
-        self.info = info
+        self.info = collections.OrderedDict(info)
         #: list of ids for FORMAT column
-        self.format = format_
+        self.format = list(format_)
         #: list of ``BCFGenotype``, one for each genotype
         self.genotypes = genotypes
 

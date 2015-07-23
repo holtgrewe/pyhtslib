@@ -146,6 +146,25 @@ __all__ = [
 
     '_vcf_read1',
     '_vcf_read',
+
+    '_bcf_get_fmt',
+    '_bcf_get_info',
+    '_bcf_get_fmt_id',
+    '_bcf_get_info_id',
+
+    '_bcf_get_format_int32',
+    '_bcf_get_format_float',
+    '_bcf_get_format_char',
+    '_bcf_get_genotypes',
+    '_bcf_get_format_string',
+    '_bcf_get_format_values',
+
+    '_bcf_gt_phased',
+    '_bcf_gt_unphased',
+    '_bcf_gt_missing',
+    '_bcf_gt_is_missing',
+    '_bcf_gt_is_phased',
+    '_bcf_gt_allele',
 ]
 
 # ----------------------------------------------------------------------------
@@ -377,6 +396,7 @@ _bcf_alt_hdr_read.restype = ctypes.POINTER(_bcf_hdr_t)
 _bcf_read = htslib.bcf_read
 _bcf_read.restype = ctypes.c_int
 
+
 def _bcf_read1(fp, h, v):
     return _bcf_read(fp, h, v)
 
@@ -511,3 +531,62 @@ _vcf_read.restype = ctypes.c_int
 
 def _vcf_read1(p, h, v):
     return _vcf_read(p, h, v)
+
+_bcf_get_fmt = htslib.bcf_get_fmt
+_bcf_get_fmt.restype = ctypes.POINTER(_bcf_fmt_t)
+
+_bcf_get_info = htslib.bcf_get_info
+_bcf_get_info.restype = ctypes.POINTER(_bcf_info_t)
+
+_bcf_get_fmt_id = htslib.bcf_get_fmt_id
+_bcf_get_fmt_id.restype = ctypes.POINTER(_bcf_info_t)
+
+_bcf_get_info_id = htslib.bcf_get_info_id
+_bcf_get_info_id.restype = ctypes.POINTER(_bcf_info_t)
+
+_bcf_get_format_string = htslib.bcf_get_format_string
+_bcf_get_format_string.restype = ctypes.c_int
+
+_bcf_get_format_values = htslib.bcf_get_format_values
+_bcf_get_format_values.restype = ctypes.c_int
+
+
+def _bcf_get_format_int32(hdr, line, tag, dst, ndst):
+    return _bcf_get_format_values(hdr, line, tag, dst, ndst, _BCF_HT_INT)
+
+
+def _bcf_get_format_float(hdr, line, tag, dst, ndst):
+    return _bcf_get_format_values(hdr, line, tag, dst, ndst, _BCF_HT_REAL)
+
+
+def _bcf_get_format_char(hdr, line, tag, dst, ndst):
+    return _bcf_get_format_values(hdr, line, tag, dst, ndst, _BCF_HT_STR)
+
+
+def _bcf_get_genotypes(hdr, line, dst, ndst):
+    return _bcf_get_format_values(hdr, line, "GT".encode('utf-8'),
+                                  dst, ndst, _BCF_HT_INT)
+
+
+def _bcf_gt_phased(idx):
+    return ((idx + 1) << 1 | 1)
+
+
+def _bcf_gt_unphased(idx):
+    return ((idx + 1) << 1)
+
+
+def _bcf_gt_missing():
+    return 0
+
+
+def _bcf_gt_is_missing(val):
+    return (0 if (val >> 1) else 1)
+
+
+def _bcf_gt_is_phased(idx):
+    return (idx & 1)
+
+
+def _bcf_gt_allele(val):
+    return (((val) >> 1) - 1)

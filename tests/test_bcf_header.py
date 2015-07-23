@@ -28,9 +28,9 @@ def check_header_of_header_only_vcf(header, line_add=0):
     assert header.target_infos[-1] == \
         bcf.BCFHeaderTargetInfo('NC_007605', 171823)
     assert header.key_ids == \
-        {'AD': 2, 'BQ': 3, 'DB': 10, 'DP': 4, 'FA': 5, 'FILTER': 14,
-         'FORMAT': 15, 'GQ': 6, 'GT': 7, 'INFO': 16, 'MQ0': 11, 'PASS': 0,
-         'PL': 8, 'REJECT': 1, 'SOMATIC': 12, 'SS': 9, 'VT': 13}
+        {'AD': 2, 'BQ': 3, 'DB': 10, 'DP': 4, 'FA': 5, 'GQ': 6, 'GT': 7,
+         'MQ0': 11, 'PASS': 0, 'PL': 8, 'REJECT': 1, 'SOMATIC': 12,
+         'SS': 9, 'VT': 13}
     assert len(header.header_records) == 101 + line_add
     assert set(header.id_to_filter_record.keys()) == set(['PASS', 'REJECT'])
     assert set(header.id_to_info_record.keys()) == \
