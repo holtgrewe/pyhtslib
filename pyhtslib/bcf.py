@@ -342,10 +342,6 @@ class BCFHeader:
             self.add_header_record(DIR[rec.type]._from_struct(rec))
 
 
-class BCFGenotype:
-    """Representation of a genotype in a BCF/VCF record"""
-
-
 class _BCFTypedInfoFieldConverter:
     # TODO(holtgrew): interpret as scalar if count is 1
 
@@ -394,6 +390,7 @@ class _BCFTypedInfoFieldConverter:
         res = _bcf_get_info_flag(
             self.header.struct_ptr, ctypes.byref(self.struct),
             self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
+        _libc.free(dst)
         return (res == 1)
 
     def convert_int(self):
@@ -403,8 +400,11 @@ class _BCFTypedInfoFieldConverter:
             self.header.struct_ptr, ctypes.byref(self.struct),
             self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
         if res < 0:
+            _libc.free(dst)
             raise BCFInfoFieldException(res, self.key, 'int32')
-        return [dst[i] for i in range(ndst.value)]
+        result = [dst[i] for i in range(ndst.value)]
+        _libc.free(dst)
+        return result
 
     def convert_float(self):
         ndst = ctypes.c_int(0)
@@ -413,8 +413,11 @@ class _BCFTypedInfoFieldConverter:
             self.header.struct_ptr, ctypes.byref(self.struct),
             self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
         if res < 0:
+            _libc.free(dst)
             raise BCFInfoFieldException(res, self.key, 'float')
-        return [dst[i] for i in range(ndst.value)]
+        result = [dst[i] for i in range(ndst.value)]
+        _libc.free(dst)
+        return result
 
     def convert_char(self):
         ndst = ctypes.c_int(0)
@@ -423,8 +426,11 @@ class _BCFTypedInfoFieldConverter:
             self.header.struct_ptr, ctypes.byref(self.struct),
             self.key.encode('utf-8'), ctypes.byref(dst), ctypes.byref(ndst))
         if res < 0:
+            _libc.free(dst)
             raise BCFInfoFieldException(res, self.key, 'string')
-        return dst.value.decode('utf-8')
+        result = dst.value.decode('utf-8')
+        _libc.free(dst)
+        return result
 
 
 class GenotypeCall:
@@ -441,13 +447,13 @@ class GenotypeCall:
         if not self._record_alleles_arr:
             if not self.gt_info:
                 return None
-            self._record_alleles = \
+            self._record_alleles_arr = \
                 [self.gt_info.record_impl.ref] + self.gt_info.record_impl.alts
         return self._record_alleles_arr
 
     @property
     def alleles(self):
-        return [self.gt_info._record_alleles[i] for i in self.allele_ids]
+        return [self._record_alleles[i] for i in self.allele_ids]
 
     @property
     def is_het(self):

@@ -15,7 +15,7 @@ END_POS = [32961691, 44559529, 108999786, 15473141, 2474081, 36694954]
 REFS = ['C', 'C', 'T', 'G', 'T', 'C']
 ALTS = [['T'], ['T'], ['C'], ['T'], ['C'], ['G']]
 QUALS = [89.59, 234.97, 73.25, 242.29, 150.25, 471.66]
-
+GENOTYPES = ['C/T', 'C/T', 'T/C', 'G/T', 'T/C', 'C/G']
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,9 +34,16 @@ def check_file(f):
         assert record.alts == ALTS[i]
         assert abs(record.qual - QUALS[i]) < 0.01
         assert record.filters == ['PASS']
-        assert record.info
+        assert len(record.info.keys()) >= 15
+        KEYS = ['AC', 'AF', 'AN', 'BaseQRankSum', 'DP', 'Dels', 'FS',
+                'HRun', 'HaplotypeScore', 'MQ0', 'MQ', 'MQRankSum', 'QD',
+                'ReadPosRankSum', 'set']
+        for key in KEYS:
+            assert key in record.info.keys()
         assert record.format == ['GT', 'AD', 'DP', 'GQ', 'PL']
-        # assert record.genotypes
+        assert len(record.genotypes) == 1
+        assert str(record.genotypes[0].gt) == \
+            'GenotypeCall({})'.format(repr(GENOTYPES[i]))
         records.append(record.detach())
 
     assert len(records) == 6
