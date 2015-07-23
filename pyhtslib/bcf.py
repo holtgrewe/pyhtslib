@@ -2,11 +2,13 @@
 """Access to BCF and BCF files"""
 
 import collections
-import ctypes  # TODO(holtgrew): remove?
+import ctypes
+import os
 import sys  # NOQA  # TODO(holtgrew): remove?
 
 from pyhtslib.hts_internal import *  # NOQA
 from pyhtslib.bcf_internal import *  # NOQA
+from pyhtslib.tabix_internal import *  # NOQA
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
@@ -877,3 +879,238 @@ class BCFFile:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+
+
+# TODO(holtgrewe): we probably want to differentiate BCF and VCF.gz with
+# two classes
+class BCFIndexIter:
+    """Iterate over query results from a ``BCFIndex``
+
+    Do not use directly but by iterating over query result of``BCFIndex``.
+    Iteration must be completed or ``close()`` must be called to prevent
+    resource leaks.
+    """
+
+    def __init__(self, bcf_index, itr):
+        #: the ``BCFIndex`` to iterate through
+        self.bcf_index = bcf_index
+        #: the ``BCFFile`` used
+        self.bcf_file = self.bcf_index.bcf_file
+        #: buffer for reading in the file itself
+        self.struct_ptr = _bcf_init1()
+        #: pointer to buffer for reading in the file record by record
+        self.struct = self.struct_ptr[0]
+        #: pointer to iterator struct to for iteration
+        self.itr_ptr = itr
+        #: iterator struct to use for iteration
+        self.itr = self.itr_ptr[0]
+        #: ``BCFRecord`` meant for consumption by the user
+        self.record = BCFRecord(self.struct_ptr, self.bcf_file.header)
+        # buffer to use in case of SAM.gz
+        self._buffer = None
+        if not self.bcf_index.is_bcf:
+            self._buffer = _kstring_t(0, 0, None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.bcf_index.is_bcf:
+            r = _bcf_itr_next(self.bcf_file.struct_ptr,
+                              self.itr_ptr,
+                              ctypes.byref(self.struct))
+        else:
+            r = _tbx_itr_next(self.bcf_file.struct_ptr,
+                              self.bcf_index.struct_ptr,
+                              self.itr_ptr,
+                              ctypes.byref(self._buffer))
+        if r >= 0:
+            # attempt to parse VCF, if VCF
+            if not self.bcf_index.is_bcf:
+                _vcf_parse1(ctypes.byref(self._buffer),
+                            self.bcf_file.header.struct_ptr,
+                            ctypes.byref(self.struct))
+            # successfully read record from file
+            self.record._reset()
+            return self.record
+        else:
+            # end of file or something went wrong
+            self.close()
+            if r < -1:
+                tpl = 'truncated file {}'
+                raise BCFFileException(tpl.format(self.bcf_file.path))
+            else:
+                self.close()
+                raise StopIteration
+
+    def close(self):
+        if self.struct_ptr:
+            _bcf_destroy1(self.struct_ptr)
+            self.struct_ptr = None
+            self.struct = None
+        if self._buffer:
+            self._buffer.free_p()
+            self._buffer = None
+        if self.itr_ptr and self.bcf_index.is_bcf:
+            _bcf_itr_destroy(self.itr_ptr)
+            self.itr_ptr = None
+            self.itr = None
+        elif self.itr_ptr and not self.bcf_index.is_bcf:
+            _tbx_itr_destroy(self.itr_ptr)
+            self.itr_ptr = None
+            self.itr = None
+
+
+class BCFIndex:
+    """Random-access access to BCF/VCF files"""
+
+    @staticmethod
+    def build(path, csi_path=None):
+        assert False, 'Implement me!'
+
+    @staticmethod
+    def _get_index_ext(path):
+        if path.endswith('.vcf.gz'):
+            return '.tbi'
+        elif path.endswith('.bcf'):
+            return '.csi'
+        else:
+            tpl = 'Not a valid alignment file extension: {}'
+            raise BCFIndexException(tpl.format(path))
+
+    def __init__(self, path, csi_path=None, require_index=True,
+                 auto_load=True, auto_build=False):
+        #: path to BCF file
+        self.path = path
+        #: path to BAI (BCF index) file
+        self.csi_path = csi_path or path + BCFIndex._get_index_ext(path)
+        #: whether or not an index is required on construction
+        self.require_index = require_index
+        #: whether or not to automatically load the index
+        self.auto_load = auto_load
+        #: whether or not to automatically build the index
+        self.auto_build = auto_build
+        #: whether or not is BCF (alternative is VCF+tabix)
+        self.is_bcf = not self.path.endswith('.vcf.gz')
+
+        #: the ``BCFFile`` to use for reading
+        self.bcf_file = BCFFile(self.path)
+        self.bcf_file.open()
+
+        # collection of iterators, we will call close() on all of them
+        # in our own close to ensure that all memory is freed
+        self.iterators = []
+
+        #: wrapped C struct
+        self.struct = None
+        #: pointer to C struct
+        self.struct_ptr = None
+
+        self._check_auto_build()
+        self._check_auto_load()
+        self._check_require_index()
+
+    def _check_file_ages(self):
+        mtime_file = os.path.getmtime(self.path)
+        mtime_index = os.path.getmtime(self.csi_path)
+        if mtime_file > mtime_index:
+            tpl = 'The file {} is older than the index file {}'
+            raise BCFIndexException(tpl.format(self.path, self.csi_path))
+
+    def _check_auto_build(self):
+        if not self.auto_build:
+            return
+        logging.debug('auto-building index for {}'.format(self.path))
+        if not os.path.exists(self.csi_path):
+            BCFIndex.build(self.path, csi_path=self.csi_path)
+
+    def _check_auto_load(self):
+        if not self.auto_load:
+            return
+        if os.path.exists(self.csi_path):
+            # check that the index is not older than the file, this is a
+            # common source of errors
+            self._check_file_ages()
+            # load index
+            self.load()
+        else:
+            tpl = 'Index {} required for {} for loading but not found.'
+            raise BCFIndexException(tpl.format(self.csi_path, self.path))
+
+    def _check_require_index(self):
+        if not self.require_index:
+            return
+        if not os.path.exists(self.csi_path):
+            tpl = 'BCF index required for {} but not found.'
+            raise BCFIndexException(tpl.format(self.path))
+
+    # TODO(holtgrewe): fix exception display if not region_string
+    def query(self, region_str=None, seq=None, begin=None, end=None):
+        if (region_str is None and
+                (seq is None or begin is None or end is None)):
+            raise BCFIndexException(
+                'You have to either give region_str or seq/begin/end')
+        if not self.is_bcf:
+            if region_str:
+                ptr = _tbx_itr_querys(self.struct_ptr,
+                                      region_str.encode('utf-8'))
+            else:
+                ptr = _tbx_itr_queryi(self.struct_ptr, seq, begin, end)
+        else:
+            if region_str:
+                ptr = _bcf_itr_querys(self.struct_ptr,
+                                      self.bcf_file.header.struct_ptr,
+                                      region_str.encode('utf-8'))
+            else:
+                ptr = _bcf_itr_queryi(self.struct_ptr, seq, begin, end)
+        if not ptr:
+            tpl = 'Could not jump to {}'
+            raise BCFIndexException(tpl.format(region_str))
+        return BCFIndexIter(self, ptr)
+
+    def load(self):
+        self.close(close_file=False)
+        if not self.is_bcf and self.csi_path:
+            self.struct_ptr = _tbx_index_load2(self.path.encode('utf-8'),
+                                               self.csi_path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load tabix index {} for {}'
+                raise BCFIndexException(tpl.format(self.csi_path, self.path))
+        elif not self.is_bcf and not self.csi_path:
+            self.struct_ptr = _tbx_index_load(self.path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load tabix index for {}'
+                raise BCFIndexException(tpl.format(self.path))
+        elif self.csi_path:
+            self.struct_ptr = _bcf_index_load2(self.path.encode('utf-8'),
+                                               self.csi_path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load BCF index {} for {}'
+                raise BCFIndexException(tpl.format(self.csi_path, self.path))
+        else:
+            self.struct_ptr = _bcf_index_load(self.bcf_file.struct_ptr,
+                                              self.path.encode('utf-8'))
+            if not self.struct_ptr:
+                tpl = 'Could not load BCF index for {}'
+                raise BCFIndexException(tpl.format(self.path))
+        self.struct = self.struct_ptr[0]
+
+    def close(self, close_file=True):
+        if self.struct_ptr:
+            if self.path.endswith('.vcf.gz'):
+                _tbx_destroy(self.struct_ptr)
+            else:
+                _hts_idx_destroy(self.struct_ptr)
+            self.struct = None
+            self.struct_ptr = None
+        if close_file:
+            self.bcf_file.close()
+        for it in self.iterators:
+            it.close()
+        self.iterators = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close(close_file=True)

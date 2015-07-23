@@ -117,6 +117,7 @@ __all__ = [
     '_bcf_read1',
     '_bcf_hdr_get_version',
     '_bcf_itr_next',
+    '_bcf_itr_destroy',
     '_bcf_init',
     '_bcf_init1',
     '_bcf_destroy1',
@@ -143,9 +144,12 @@ __all__ = [
     '_bcf_rec_nalleles',
     '_bcf_itr_querys',
     '_bcf_index_load',
+    '_bcf_index_load2',
 
     '_vcf_read1',
     '_vcf_read',
+    '_vcf_parse1',
+    '_vcf_parse',
 
     '_bcf_get_fmt',
     '_bcf_get_info',
@@ -409,6 +413,9 @@ def _bcf_itr_next(htsfp, itr, r):
     return _hts_itr_next(htsfp[0].fp.bgzf, itr, r, 0)
 
 
+def _bcf_itr_destroy(iter):
+    return _hts_itr_destroy(iter)
+
 _bcf_init = htslib.bcf_init
 _bcf_init.restype = ctypes.POINTER(_bcf1_t)
 
@@ -525,12 +532,22 @@ def _bcf_index_load(fn):
     return _hts_idx_load(fn, HTS_FMT_CSI)
 
 
+_bcf_index_load2 = htslib.bcf_index_load2
+_bcf_index_load2.restype = ctypes.POINTER(_hts_idx_t)
+
 _vcf_read = htslib.vcf_read
 _vcf_read.restype = ctypes.c_int
 
 
 def _vcf_read1(p, h, v):
     return _vcf_read(p, h, v)
+
+_vcf_parse = htslib.vcf_parse
+_vcf_parse.restype = ctypes.c_int
+
+
+def _vcf_parse1(p, h, v):
+    return _vcf_parse(p, h, v)
 
 _bcf_get_fmt = htslib.bcf_get_fmt
 _bcf_get_fmt.restype = ctypes.POINTER(_bcf_fmt_t)
