@@ -2,13 +2,11 @@
 """Random access to FASTA files."""
 
 import collections
-import ctypes
 import logging
 import os.path
 
 import pyhtslib
-from pyhtslib.hts_internal import _libc
-from pyhtslib.faidx_internal import *  # NOQA
+import pyhtslib._pyhtslib as pp
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
@@ -79,20 +77,20 @@ class FASTAIndex:
 
     def load(self):
         """Load FAI index."""
-        self.struct_ptr = _fai_load(self.fasta_path.encode('utf-8'))
+        self.struct_ptr = pp.lib.fai_load(self.fasta_path.encode('utf-8'))
         if not self.struct_ptr:
             tpl = 'Failed to load FASTA index for FASTA file {}'
-            raise FastaIndexException(tpl.format(self.fasta_path))
+            raise FASTAIndexException(tpl.format(self.fasta_path))
         self.seq_dict = self._build_seq_dict()
 
     def _build_seq_dict(self):
         """Build sequence dictionary."""
         result = collections.OrderedDict()
-        num_seqs = _faidx_nseq(self.struct_ptr)
+        num_seqs = pp.lib.faidx_nseq(self.struct_ptr)
         for i in range(num_seqs):
-            seq = _faidx_iseq(self.struct_ptr, i)
-            length = _faidx_seq_len(self.struct_ptr, seq)
-            seq = seq.decode('utf-8')
+            seq = pp.lib.faidx_iseq(self.struct_ptr, i)
+            length = pp.lib.faidx_seq_len(self.struct_ptr, seq)
+            seq = pp.ffi.string(seq).decode('utf-8')
             result[seq] = FASTAIndexSequenceRecord(seq, length)
         return result
 
@@ -102,19 +100,16 @@ class FASTAIndex:
         if type(region) is pyhtslib.GenomeInterval:
             region = str(region)
         region = region.encode('utf-8')
-        res_len = ctypes.c_int()
-        # note the remark at the definition of _fai_fetch
-        void_p = _fai_fetch(self.struct_ptr, region, ctypes.byref(res_len))
-        res = ctypes.cast(void_p, ctypes.c_char_p).value.decode('utf-8')
-        _libc.free(void_p)
-        return res
+        res_len = pp.ffi.new('int *')
+        res = pp.lib.fai_fetch(self.struct_ptr, region, res_len)
+        return pp.ffi.string(res).decode('utf-8')
 
     def close(self):
         """Free memory for self.struct_ptr if any."""
         if not self.struct_ptr:
             return
         logging.debug('Freeing FAI for %s', self.fasta_path)
-        _fai_destroy(self.struct_ptr)
+        pp.lib.fai_destroy(self.struct_ptr)
         self.struct_ptr = None
 
     def __enter__(self):
@@ -132,4 +127,4 @@ class FASTAIndex:
     def build(fasta_path):
         """Build index for the file at the given path."""
         logging.debug('Building FAI file for %s', fasta_path)
-        _fai_build(fasta_path.encode('utf-8'))
+        pp.lib.fai_build(fasta_path.encode('utf-8'))

@@ -6,8 +6,7 @@ import logging
 import os
 import os.path
 
-from pyhtslib.hts_internal import *  # NOQA
-from pyhtslib.tabix_internal import *  # NOQA
+import pyhtslib._pyhtslib as pp
 
 __author__ = 'Manuel Holtgrewe <manuel.holtgrewe@bihealth.de>'
 
@@ -33,7 +32,7 @@ class TabixConfig:
 
     @staticmethod
     def from_c_struct(name, min_shift=None):
-        res = _tbx_conf_t.in_dll(htslib, name)
+        res = getattr(pp.lib, name)
         return TabixConfig(res.preset, res.sc, res.bc, res.ec,
                            res.meta_char, res.line_skip, min_shift)
 
@@ -61,17 +60,21 @@ class TabixConfig:
         self.seq_col = seq_col
         self.begin_col = begin_col
         self.end_col = end_col
-        self.meta_char = meta_char
+        self.meta_char = chr(meta_char)
         self.min_shift = min_shift
 
     def to_c_struct(self):
-        """Convert to C struct"""
-        res = _tbx_conf_t()
+        """Convert to C struct
+
+        The returned object will be garbage-collected.
+        """
+        ptr = pp.ffi.new('tbx_conf_t 8')
+        res = ptr[0]
         res.preset = self.preset
         res.sc = self.seq_col
         res.bc = self.begin_col
         res.ec = self.end_col
-        res.meta_char = self.meta_char
+        res.meta_char = ord(self.meta_char)
         return res
 
 
@@ -89,19 +92,19 @@ class NormalTabixFileIter:
         self.index = index
         self.struct_ptr = struct_ptr
         self.struct = self.struct_ptr[0]
-        self._buffer = _kstring_t(0, 0, None)
+        self._buffer_ptr = pp.ffi.new('kstring_t *')
+        self._buffer = self._buffer_ptr[0]
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if _tbx_itr_next(self.index.file.struct_ptr, self.index.struct_ptr,
-                         self.struct_ptr, ctypes.byref(self._buffer)) >= 0:
-            return self._buffer.s.decode('utf-8')
+        if pp.lib._tbx_itr_next(
+                self.index.file.struct_ptr, self.index.struct_ptr,
+                self.struct_ptr, self._buffer_ptr) >= 0:
+            return pp.ffi.string(self._buffer.s).decode('utf-8')
         else:
             self.close()
-            if self._buffer:
-                self._buffer.free_p()
             raise StopIteration()
 
     def close(self):
@@ -110,11 +113,12 @@ class NormalTabixFileIter:
         This function is idempotent.
         """
         if self.struct_ptr:
-            _hts_itr_destroy(self.struct_ptr)
+            pp.lib._tbx_itr_destroy(self.struct_ptr)
             self.struct_ptr = None
             self.struct = None
         if self._buffer:
-            self._buffer.free_p()
+            pp.lib.free(self._buffer.s)
+            self._buffer_ptr = None
             self._buffer = None
 
 
@@ -123,41 +127,44 @@ class AllTabixFileIter:
 
     def __init__(self, index):
         self.index = index
-        self._buffer = _kstring_t(0, 0, None)
+        self._buffer_ptr = pp.ffi.new('kstring_t *')
+        self._buffer = self._buffer_ptr[0]
         self.current_chrom = iter(self._fetch_chroms())
-        seq = next(self.current_chrom)
-        self.struct_ptr = _tbx_itr_querys(self.index.struct_ptr, seq)
+        seq = next(self.current_chrom).encode('utf-8')
+        self.struct_ptr = pp.lib._tbx_itr_querys(self.index.struct_ptr, seq)
         self.struct = self.struct_ptr[0]
 
     def __iter__(self):
         return self
 
     def _fetch_chroms(self):
-        nseq = ctypes.c_int()
-        seq = _tbx_seqnames(self.index.struct_ptr, ctypes.byref(nseq))
-        result = [seq[i] for i in range(nseq.value)]
-        _libc.free(seq)
+        nseq = pp.ffi.new('int *')
+        seq = pp.lib.tbx_seqnames(self.index.struct_ptr, nseq)
+        result = [pp.ffi.string(seq[i]).decode('utf-8')
+                  for i in range(nseq[0])]
+        pp.lib.free(seq)
         return result
 
     def __next__(self):
         if not self.current_chrom:
             raise StopIteration()
-        if _tbx_itr_next(self.index.file.struct_ptr, self.index.struct_ptr,
-                         self.struct_ptr, ctypes.byref(self._buffer)) >= 0:
-            return self._buffer.s.decode('utf-8')
+        if pp.lib._tbx_itr_next(
+                self.index.file.struct_ptr, self.index.struct_ptr,
+                self.struct_ptr, self._buffer_ptr) >= 0:
+            return pp.ffi.string(self._buffer.s).decode('utf-8')
         else:
             while True:
                 try:
                     seq = next(self.current_chrom)
-                    _tbx_itr_destroy(self.struct_ptr)
-                    self.struct_ptr = _tbx_itr_querys(
+                    pp.lib._tbx_itr_destroy(self.struct_ptr)
+                    self.struct_ptr = pp.lib._tbx_itr_querys(
                         self.index.struct_ptr, seq)
                     self.struct = self.struct_ptr[0]
-                    if _tbx_itr_next(self.index.file.struct_ptr,
-                                     self.index.struct_ptr,
-                                     self.struct_ptr,
-                                     ctypes.byref(self._buffer)) >= 0:
-                        return self._buffer.s.decode('utf-8')
+                    if pp.lib._tbx_itr_next(self.index.file.struct_ptr,
+                                            self.index.struct_ptr,
+                                            self.struct_ptr,
+                                            self._buffer) >= 0:
+                        return pp.ffi.string(self._buffer.s).decode('utf-8')
                 except StopIteration:
                     self.close()
                     raise StopIteration()
@@ -169,12 +176,13 @@ class AllTabixFileIter:
         """
         self.current_chrom = None
         if self.struct_ptr:
-            _tbx_itr_destroy(self.struct_ptr)
+            pp.lib._tbx_itr_destroy(self.struct_ptr)
             self.struct_ptr = None
             self.struct = None
         if self._buffer:
-            self._buffer.free_p()
+            pp.lib.free(self._buffer.s)
             self._buffer = None
+            self._buffer_ptr = None
 
 
 class TabixFile:
@@ -190,10 +198,10 @@ class TabixFile:
 
     def open(self):
         # check that the file was opened using bgzip
-        if _bgzf_is_bgzf(self.path.encode('utf-8')) != 1:
+        if pp.lib.bgzf_is_bgzf(self.path.encode('utf-8')) != 1:
             tpl = '{} was not compressed using bgzip'
             raise TabixFileException(tpl.format(self.path))
-        self.struct_ptr = _hts_open(self.path.encode('utf-8'), 'r')
+        self.struct_ptr = pp.lib.hts_open(self.path.encode('utf-8'), b'r')
         if not self.struct_ptr:
             tpl = 'Opening tabix file {} failed'
             raise TabixFileException(tpl.format(self.path))
@@ -205,7 +213,7 @@ class TabixFile:
         This function is idempotent.
         """
         if self.struct_ptr:
-            if _hts_close(self.struct_ptr) != 0:
+            if pp.lib.hts_close(self.struct_ptr) != 0:
                 tpl = 'Problem closing tabix file {}'
                 raise TabixFileException(tpl.format(self.path))
             self.struct_ptr = None
@@ -237,13 +245,8 @@ class TabixIndex:
             raise TabixIndexException('Cannot build tabix index as we could '
                                       'not recognize the file type')
         # build tabix index
-        if tbi_path:
-            _tbx_index_build2(path.encode('utf-8'), tbi_path.encode('utf-8'),
-                              config.min_shift,
-                              ctypes.byref(config.to_c_struct()))
-        else:
-            _tbx_index_build(path.encode('utf-8'), config.min_shift,
-                             ctypes.byref(config.to_c_struct()))
+        pp.lib.tbx_index_build(path.encode('utf-8'), config.min_shift,
+                               config.to_c_struct())
 
     def __init__(self, path, tbi_path=None, require_index=False,
                  auto_load=True, auto_build=True):
@@ -313,15 +316,16 @@ class TabixIndex:
     def get_header(self):
         """Return string with header lines resets iteration to file"""
         result = []
-        buf = _kstring_t(0, 0, None)
-        while _hts_getline(self.file.struct_ptr, _KS_SEP_LINE,
-                           ctypes.byref(buf)) >= 0:
-            if not buf.l or buf.s[0] != self.struct.conf.meta_char:
+        buf = pp.ffi.new('kstring_t *')
+        while pp.lib.hts_getline(
+                self.file.struct_ptr, pp.lib.KS_SEP_LINE, buf) >= 0:
+            line = pp.ffi.string(buf[0].s).decode('utf-8')
+            if not buf[0].l or line[0] != chr(self.struct.conf.meta_char):
                 break
             else:
-                result.append(buf.s.decode('utf-8'))
+                result.append(line)
                 result.append('\n')
-        buf.free_p()
+        pp.lib.free(buf[0].s)
         return ''.join(result)
 
     # TODO(holtgrewe): fix exception display if not region_string
@@ -331,10 +335,10 @@ class TabixIndex:
             raise TabixIndexException(
                 'You have to either give region_str or seq/begin/end')
         if region_str:
-            ptr = _tbx_itr_querys(self.struct_ptr,
-                                  region_str.encode('utf-8'))
+            ptr = pp.lib._tbx_itr_querys(self.struct_ptr,
+                                         region_str.encode('utf-8'))
         else:
-            ptr = _tbx_itr_queryi(self.struct_ptr, seq, begin, end)
+            ptr = pp.lib._tbx_itr_queryi(self.struct_ptr, seq, begin, end)
         if not ptr:
             tpl = 'Could not jump to {}'
             raise TabixIndexException(tpl.format(region_str))
@@ -350,23 +354,15 @@ class TabixIndex:
 
     def load(self):
         self.close(close_file=False)
-        if self.tbi_path:
-            self.struct_ptr = _tbx_index_load2(self.path.encode('utf-8'),
-                                               self.tbi_path.encode('utf-8'))
-            if not self.struct_ptr:
-                tpl = 'Could not load tabix index for {}'
-                raise TabixIndexException(tpl.format(self.path))
-        else:
-            self.struct_ptr = _tbx_index_load(self.path.encode('utf-8'))
-            if not self.struct_ptr:
-                tpl = 'Could not load tabix index {} for {}'
-                raise TabixIndexException(tpl.format(self.tbi_path,
-                                                     self.path))
+        self.struct_ptr = pp.lib.tbx_index_load(self.path.encode('utf-8'))
+        if not self.struct_ptr:
+            tpl = 'Could not load tabix index {} for {}'
+            raise TabixIndexException(tpl.format(self.tbi_path, self.path))
         self.struct = self.struct_ptr[0]
 
     def close(self, close_file=True):
         if self.struct_ptr:
-            _tbx_destroy(self.struct_ptr)
+            pp.lib.tbx_destroy(self.struct_ptr)
             self.struct = None
             self.struct_ptr = None
         if close_file:

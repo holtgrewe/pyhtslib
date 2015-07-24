@@ -10,3 +10,4 @@
 * wrapping of bcf\_synced\_reader
 * functionality for pileup
 * multi-BAM reading for BAM files
+* TODO(holtgrewe): allow _load2
